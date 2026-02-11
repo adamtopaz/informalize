@@ -1,0 +1,10 @@
+name = "informalize"
+version = "0.1.0"
+defaultTargets = ["informalize"]
+
+[[lean_lib]]
+name = "Informalize"
+
+[[lean_exe]]
+name = "informalize"
+root = "Main"
