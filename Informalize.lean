@@ -1,3 +1,8 @@
--- This module serves as the root of the `Informalize` library.
--- Import modules here that should be built as part of the library.
-import Informalize.Basic
+import Informalize.Axiom
+import Informalize.Extension
+import Informalize.Elaborator
+import Informalize.CodeAction
+import Informalize.Tooling.Status
+import Informalize.Tooling.Deps
+import Informalize.Tooling.Blueprint
+import Informalize.Tooling.Linter

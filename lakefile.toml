@@ -5,6 +5,9 @@ defaultTargets = ["informalize"]
 [[lean_lib]]
 name = "Informalize"
 
+[[lean_lib]]
+name = "Tests"
+
 [[lean_exe]]
-name = "informalize"
-root = "Main"
+name = "tests"
+root = "Tests"
