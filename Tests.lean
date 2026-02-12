@@ -14,7 +14,8 @@ import Tests.Integration.Phase6
 import Tests.Integration.Phase7
 import Tests.Unit.Phase8
 import Tests.Integration.Phase8
+import Tests.Integration.Phase9
 import Tests.Integration.Cli
 
 def main : IO Unit := do
-  IO.println "Phase 1 through Phase 8 test modules compiled successfully."
+  IO.println "Phase 1 through Phase 9 test modules compiled successfully."

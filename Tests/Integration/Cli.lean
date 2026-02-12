@@ -50,6 +50,13 @@ run_cmd do
   assertContains "status command" status.stdout "Progress: 1/4 (25%)"
 
 run_cmd do
+  let transitiveStatus := ← liftIO <| Informalize.Cli.invoke #["status", "--module", "Tests.Integration.Phase3"]
+  assertExitCode "transitive status command" transitiveStatus 0
+  assertContains "transitive status command" transitiveStatus.stdout "Informal (3):"
+  assertContains "transitive status command" transitiveStatus.stdout "Formalized (1):"
+  assertContains "transitive status command" transitiveStatus.stdout "Progress: 1/4 (25%)"
+
+run_cmd do
   let deps := ← liftIO <| Informalize.Cli.invoke #["deps", "--module", "Tests.Unit.Phase3"]
   assertExitCode "deps command" deps 0
   assertContains "deps command" deps.stdout "phase3Dependent -> phase3Base"

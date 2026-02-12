@@ -76,6 +76,7 @@ abbrev InformalEntries := Array InformalEntry
 
 structure InformalState where
   entries : InformalEntries := #[]
+  localEntries : InformalEntries := #[]
   informalIdxs : Array Nat := #[]
   formalizedIdxs : Array Nat := #[]
   byDecl : NameMap (Array Nat) := {}
@@ -100,8 +101,16 @@ private def appendIndexByFile
   let values := index.getD key #[]
   index.insert key (values.push entryIdx)
 
-private def InformalState.addEntry (state : InformalState) (entry : InformalEntry) : InformalState :=
+private def InformalState.addEntry
+    (state : InformalState)
+    (entry : InformalEntry)
+    (isLocal : Bool := true) : InformalState :=
   let entryIdx := state.entries.size
+  let localEntries :=
+    if isLocal then
+      state.localEntries.push entry
+    else
+      state.localEntries
   let informalIdxs :=
     if entry.status == .informal then
       state.informalIdxs.push entryIdx
@@ -127,6 +136,7 @@ private def InformalState.addEntry (state : InformalState) (entry : InformalEntr
     return byRefConst
   {
     entries := state.entries.push entry
+    localEntries
     informalIdxs
     formalizedIdxs
     byDecl
@@ -142,12 +152,12 @@ initialize informalExt : PersistentEnvExtension InformalEntry InformalEntry Info
       let mut state : InformalState := {}
       for importedEntries in imported do
         for entry in importedEntries do
-          state := state.addEntry entry
+          state := state.addEntry entry (isLocal := false)
       return state
     addEntryFn := fun state entry =>
       state.addEntry entry
     exportEntriesFn := fun state =>
-      state.entries
+      state.localEntries
     asyncMode := .sync
   }
 
