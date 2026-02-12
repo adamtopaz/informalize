@@ -31,6 +31,18 @@ run_cmd do
   if inferredSubexprEntry.expectedType.isEmpty then
     throwError "expected inferTypeForSubexpression metadata to include an inferred type"
 
+  let env ← Lean.Elab.Command.liftCoreM Lean.getEnv
+  let some interpolationConstInfo := env.find? ``interpolationWithMultipleTerms
+    | throwError "expected interpolationWithMultipleTerms declaration"
+  let interpolationUsedConstants :=
+    match interpolationConstInfo.value? with
+    | some value => value.getUsedConstants
+    | none => #[]
+  unless interpolationUsedConstants.contains ``Nat.succ do
+    throwError "expected interpolationWithMultipleTerms kernel term to reference Nat.succ"
+  unless interpolationUsedConstants.contains ``Nat.pred do
+    throwError "expected interpolationWithMultipleTerms kernel term to reference Nat.pred"
+
   let (informalCount, _) ← Lean.Elab.Command.liftCoreM Informalize.countsByStatus
   if informalCount == 0 then
     throwError "expected at least one informal entry"

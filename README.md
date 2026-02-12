@@ -84,8 +84,11 @@ def seed' : Nat :=
 - `formalized "description with {interpolations}" as <tacticSeq>`
 - `formalized "description with {interpolations}" from "docs/DocRefs.md#my-id" as <tacticSeq>`
 
-Interpolations can be arbitrary Lean terms. Informalize records constants from
-these terms for dependency tracking.
+`informal` is only supported inside declaration values and proofs.
+
+Interpolations can be arbitrary Lean terms. Informalize elaborates them as
+explicit placeholder arguments and records their constants for dependency
+tracking.
 
 For long-form notes, point to markdown files with stable markers:
 

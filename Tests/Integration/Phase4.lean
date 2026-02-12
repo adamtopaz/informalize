@@ -20,7 +20,7 @@ info: # Informalize Blueprint
 
 - `phase4Dependent` -> `phase4Base`
 - `phase4Base` -> _(none)_
-- `phase4Formalized` -> _(none)_
+- `phase4Formalized` -> `phase4Base`
 -/
 #guard_msgs(info, drop warning) in
 #export_blueprint
@@ -74,8 +74,10 @@ info: {"summary": {"totalEntries": 3, "informalEntries": 2, "formalizedEntries":
  "dependencyGraph":
  [{"targets": ["phase4Base"], "declaration": "phase4Dependent"},
   {"targets": [], "declaration": "phase4Base"},
-  {"targets": [], "declaration": "phase4Formalized"}],
- "dependencyEdges": [{"to": "phase4Base", "from": "phase4Dependent"}]}
+  {"targets": ["phase4Base"], "declaration": "phase4Formalized"}],
+ "dependencyEdges":
+ [{"to": "phase4Base", "from": "phase4Dependent"},
+  {"to": "phase4Base", "from": "phase4Formalized"}]}
 -/
 #guard_msgs(info, drop warning) in
 #export_blueprint "json"

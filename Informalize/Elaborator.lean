@@ -138,15 +138,39 @@ meta def mkUniqueTag : TermElabM Name := do
   else
     SorryLabelView.encode {}
 
-meta def mkInformalExpr (expectedType : Expr) (capturedFVarIds : Array FVarId) : TermElabM Expr := do
+meta def nameContainsComponent (name : Name) (target : String) : Bool :=
+  match name with
+  | .anonymous =>
+    false
+  | .str parent component =>
+    component == target || nameContainsComponent parent target
+  | .num parent _ =>
+    nameContainsComponent parent target
+
+meta def isCommandPseudoDeclName (declName : Name) : Bool :=
+  declName == `_check ||
+    declName == `_reduce ||
+    declName == `_synth_cmd ||
+    nameContainsComponent declName "_eval"
+
+meta def mkInformalExpr
+    (expectedType : Expr)
+    (interpolationExprs : Array Expr)
+    (capturedFVarIds : Array FVarId) : TermElabM Expr := do
+  let interpolationExprs ← interpolationExprs.mapM instantiateMVars
+  let interpolationTypes ← interpolationExprs.mapM fun interpolationExpr => do
+    instantiateMVars (← Meta.inferType interpolationExpr)
   let capturedFVars := capturedFVarIds.map mkFVar
-  let alpha ← mkForallFVars capturedFVars expectedType
+  let alphaBody := interpolationTypes.foldr (init := expectedType) fun interpolationType body =>
+    mkForall `interp .default interpolationType body
+  let alpha ← mkForallFVars capturedFVars alphaBody
   let tag ← mkUniqueTag
   let taggedAlpha := mkForall `tag .default (mkConst ``Lean.Name) alpha
   let level ← Meta.getLevel taggedAlpha
   let informalConst := Lean.mkConst ``Informalize.Informal [level]
   let informalWithTag := mkApp2 informalConst taggedAlpha (toExpr tag)
-  return mkAppN informalWithTag capturedFVars
+  let informalWithCaptured := mkAppN informalWithTag capturedFVars
+  return mkAppN informalWithCaptured interpolationExprs
 
 meta def mkEntry
     (status : InformalStatus)
@@ -201,6 +225,10 @@ meta def runInformalElab
     (descriptionStx : Syntax)
     (docRef? : Option DocRef)
     (expectedType? : Option Expr) : TermElabM Expr := do
+  let some declName := (← getDeclName?)
+    | throwError "`informal` may only be used inside declaration values or proofs"
+  if isCommandPseudoDeclName declName then
+    throwError "`informal` may only be used inside declaration values or proofs"
   let descriptionData ← elabDescriptionData descriptionStx
   let expectedType ←
     match expectedType? with
@@ -209,12 +237,12 @@ meta def runInformalElab
     | none => do
       let probeExpectedType ← mkFreshTypeMVar
       let probeCapturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs probeExpectedType
-      let probeExpr ← mkInformalExpr probeExpectedType probeCapturedFVarIds
+      let probeExpr ← mkInformalExpr probeExpectedType descriptionData.interpolationExprs probeCapturedFVarIds
       Term.synthesizeSyntheticMVarsNoPostponing
       let probeExpr ← instantiateMVars probeExpr
       instantiateMVars (← Meta.inferType probeExpr)
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
-  let expr ← mkInformalExpr expectedType capturedFVarIds
+  let expr ← mkInformalExpr expectedType descriptionData.interpolationExprs capturedFVarIds
   let entry ← mkEntry .informal descriptionData docRef? expectedType capturedFVarIds
   addInformalEntry entry
   return annotateExprWithEntry entry expr
@@ -233,6 +261,8 @@ meta def runFormalizedTermElab
     | none => instantiateMVars (← Meta.inferType bodyExpr)
   let descriptionData ← elabDescriptionData descriptionStx
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
+  if (← getDeclName?).isNone then
+    return bodyExpr
   let entry ← mkEntry .formalized descriptionData docRef? expectedType capturedFVarIds
   addInformalEntry entry
   return annotateExprWithEntry entry bodyExpr

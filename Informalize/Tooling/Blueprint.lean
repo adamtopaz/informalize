@@ -48,53 +48,23 @@ private def dedupSortedNames (names : Array Name) : Array Name := Id.run do
       result := result.push name
   return result
 
-private def mergeUniqueNames (base extra : Array Name) : Array Name := Id.run do
-  let mut seen : NameSet := {}
-  let mut result : Array Name := #[]
-  for name in base do
-    if !seen.contains name then
-      seen := seen.insert name
-      result := result.push name
-  for name in extra do
-    if !seen.contains name then
-      seen := seen.insert name
-      result := result.push name
-  return result
+private def usedConstants (constInfo : ConstantInfo) : Array Name :=
+  Id.run do
+    let mut refs : Array Name := #[]
+    for constName in constInfo.getUsedConstantsAsSet do
+      refs := refs.push constName
+    return refs.qsort Name.quickLt
 
-private def refsForDecl (declRefs : Array (Name × Array Name)) (declName : Name) : Array Name :=
-  match declRefs.find? (·.1 == declName) with
-  | some (_, refs) => refs
-  | none => #[]
-
-private def insertDeclRefs
-    (declRefs : Array (Name × Array Name))
-    (declName : Name)
-    (refs : Array Name) : Array (Name × Array Name) := Id.run do
-  let mut found := false
-  let mut result : Array (Name × Array Name) := #[]
-  for (name, currentRefs) in declRefs do
-    if name == declName then
-      found := true
-      result := result.push (name, mergeUniqueNames currentRefs refs)
-    else
-      result := result.push (name, currentRefs)
-  if !found then
-    result := result.push (declName, refs)
-  return result
-
-private def buildDeclDependencyGraph (entries : InformalEntries) : Array (Name × Array Name) :=
+private def buildDeclDependencyGraph (env : Environment) (entries : InformalEntries) : Array (Name × Array Name) :=
   let declNames :=
     dedupSortedNames ((entries.filterMap (·.declName)).qsort Name.quickLt)
   let declSet := declNames.foldl (init := ({} : NameSet)) fun set declName =>
     set.insert declName
-  let declRefs := Id.run do
-    let mut refs : Array (Name × Array Name) := #[]
-    for entry in entries do
-      if let some declName := entry.declName then
-        refs := insertDeclRefs refs declName entry.referencedConstants
-    return refs
   declNames.map fun declName =>
-    let refs := refsForDecl declRefs declName
+    let refs :=
+      match env.find? declName with
+      | some constInfo => usedConstants constInfo
+      | none => #[]
     let targets := Id.run do
       let mut seen : NameSet := {}
       let mut targets : Array Name := #[]
@@ -105,12 +75,13 @@ private def buildDeclDependencyGraph (entries : InformalEntries) : Array (Name �
       return targets.qsort Name.quickLt
     (declName, targets)
 
-private def dependencyEdgesFromEntries (entries : InformalEntries) : Array (Name × Array Name) :=
-  buildDeclDependencyGraph entries
+private def dependencyEdgesFromEntries (env : Environment) (entries : InformalEntries) : Array (Name × Array Name) :=
+  buildDeclDependencyGraph env entries
 
 def dependencyEdges : CoreM (Array (Name × Array Name)) := do
+  let env ← getEnv
   let entries ← Informalize.allEntries
-  pure <| dependencyEdgesFromEntries entries
+  pure <| dependencyEdgesFromEntries env entries
 
 private def mkSourceJson (source : SourceRef) : Json :=
   Json.mkObj [
@@ -165,7 +136,8 @@ private def flattenEdges (graph : Array (Name × Array Name)) : Array (Name × N
 
 def renderBlueprintJson : CoreM String := do
   let entries ← Informalize.allEntries
-  let graph := dependencyEdgesFromEntries entries
+  let env ← getEnv
+  let graph := dependencyEdgesFromEntries env entries
   let edges := flattenEdges graph
   let informalCount : Nat := entries.foldl (init := 0) fun acc entry =>
     if entry.status == .informal then acc + 1 else acc
@@ -186,7 +158,8 @@ def renderBlueprintJson : CoreM String := do
 
 def renderBlueprintMarkdown : CoreM String := do
   let entries ← Informalize.allEntries
-  let graph := dependencyEdgesFromEntries entries
+  let env ← getEnv
+  let graph := dependencyEdgesFromEntries env entries
   let informalCount : Nat := entries.foldl (init := 0) fun acc entry =>
     if entry.status == .informal then acc + 1 else acc
   let formalizedCount : Nat := entries.foldl (init := 0) fun acc entry =>

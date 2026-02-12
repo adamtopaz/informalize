@@ -40,3 +40,15 @@ run_cmd do
     throwError "expected linter to report phase3SorryTheorem as referencing sorryAx"
   unless report.orphanEntries.isEmpty do
     throwError "expected no orphan metadata entries"
+
+  let env ← Lean.Elab.Command.liftCoreM Lean.getEnv
+  let some phase3DependentInfo := env.find? ``phase3Dependent
+    | throwError "expected declaration info for phase3Dependent"
+  let phase3DependentUsedConstants :=
+    match phase3DependentInfo.value? with
+    | some value => value.getUsedConstants
+    | none => #[]
+  unless phase3DependentUsedConstants.contains ``phase3Base do
+    throwError "expected phase3Dependent kernel term to reference phase3Base"
+  unless phase3DependentUsedConstants.contains ``Nat.succ do
+    throwError "expected phase3Dependent kernel term to reference Nat.succ"

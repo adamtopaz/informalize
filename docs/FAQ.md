@@ -10,13 +10,19 @@ The goal is to keep files compiling while formalization is in progress.
 If a definition depends on an `informal` placeholder, mark the definition `noncomputable`.
 This matches Lean's usual requirements for axiom-based or non-executable content.
 
+## Where can `informal` be used?
+
+`informal` is only accepted inside declaration values or proof terms.
+Top-level command usage (for example under `#check`) is rejected.
+
 ## Are `informal` placeholders unique?
 
 Yes. Each placeholder carries a unique tag so two placeholders at the same type are not defeq by default.
 
 ## Do interpolation terms affect dependencies?
 
-Yes. Constants referenced in interpolation expressions are tracked as dependency signals.
+Yes. Interpolation expressions are elaborated as explicit arguments to the generated placeholder term.
+Their referenced constants are also recorded in metadata for dependency tooling.
 
 ## How does this interact with instances and implicit parameters?
 

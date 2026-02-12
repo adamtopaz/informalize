@@ -2,6 +2,8 @@ import Informalize
 
 /--
 error: Unknown identifier `doesNotExist`
+---
+error: (kernel) declaration has metavariables '_example'
 -/
 #guard_msgs(error, drop warning) in
 example : True := by
@@ -29,3 +31,9 @@ error: invalid doc reference 'docs/DocRefs.md#one#two': doc reference must match
 #guard_msgs(error, drop warning) in
 example : Nat :=
   formalized "Malformed ref" from "docs/DocRefs.md#one#two" as Nat.succ 0
+
+/--
+error: `informal` may only be used inside declaration values or proofs
+-/
+#guard_msgs(error, drop warning) in
+#check informal "Top-level informal term"

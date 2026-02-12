@@ -11,55 +11,23 @@ namespace Informalize.Tooling
 
 syntax (name := informalDepsCmd) "#informal_deps" : command
 
-private def mergeUniqueNames (base extra : Array Name) : Array Name := Id.run do
+private def collectInformalDeclNames (entries : InformalEntries) : Array Name := Id.run do
   let mut seen : NameSet := {}
-  let mut result : Array Name := #[]
-  for name in base do
-    if !seen.contains name then
-      seen := seen.insert name
-      result := result.push name
-  for name in extra do
-    if !seen.contains name then
-      seen := seen.insert name
-      result := result.push name
-  return result
-
-private def refsForDecl (declRefs : Array (Name × Array Name)) (declName : Name) : Array Name :=
-  match declRefs.find? (·.1 == declName) with
-  | some (_, refs) => refs
-  | none => #[]
-
-private def insertDeclRefs
-    (declRefs : Array (Name × Array Name))
-    (declName : Name)
-    (refs : Array Name) : Array (Name × Array Name) := Id.run do
-  let mut found := false
-  let mut result : Array (Name × Array Name) := #[]
-  for (name, currentRefs) in declRefs do
-    if name == declName then
-      found := true
-      result := result.push (name, mergeUniqueNames currentRefs refs)
-    else
-      result := result.push (name, currentRefs)
-  if !found then
-    result := result.push (declName, refs)
-  return result
-
-private def collectInformalDeclRefs (entries : InformalEntries) : Array (Name × Array Name) := Id.run do
-  let mut declRefs : Array (Name × Array Name) := #[]
+  let mut declNames : Array Name := #[]
   for entry in entries do
     if entry.status == .informal then
       if let some declName := entry.declName then
-        declRefs := insertDeclRefs declRefs declName entry.referencedConstants
-  return declRefs
+        if !seen.contains declName then
+          seen := seen.insert declName
+          declNames := declNames.push declName
+  return declNames.qsort Name.quickLt
 
 private def usedConstants (constInfo : ConstantInfo) : Array Name :=
-  let fromType := constInfo.type.getUsedConstants
-  let fromValue :=
-    match constInfo.value? with
-    | some value => value.getUsedConstants
-    | none => #[]
-  mergeUniqueNames fromType fromValue
+  Id.run do
+    let mut refs : Array Name := #[]
+    for constName in constInfo.getUsedConstantsAsSet do
+      refs := refs.push constName
+    return refs.qsort Name.quickLt
 
 private structure ReachState where
   visited : NameSet := {}
@@ -99,19 +67,21 @@ private def dependencyTargets
 
 private def buildGraph
     (env : Environment)
-    (declRefs : Array (Name × Array Name)) : Array (Name × Array Name) :=
-  let declNames := (declRefs.map (·.1)).qsort Name.quickLt
+    (declNames : Array Name) : Array (Name × Array Name) :=
   let informalDecls := declNames.foldl (init := ({} : NameSet)) fun set declName =>
     set.insert declName
   declNames.map fun declName =>
-    let refs := refsForDecl declRefs declName
+    let refs :=
+      match env.find? declName with
+      | some constInfo => usedConstants constInfo
+      | none => #[]
     (declName, dependencyTargets env informalDecls declName refs)
 
 def dependencyGraph : CoreM (Array (Name × Array Name)) := do
   let entries ← Informalize.allEntries
   let env ← getEnv
-  let declRefs := collectInformalDeclRefs entries
-  return buildGraph env declRefs
+  let declNames := collectInformalDeclNames entries
+  return buildGraph env declNames
 
 private def leavesFromGraph (graph : Array (Name × Array Name)) : Array Name :=
   graph.foldl (init := #[]) fun acc (declName, deps) =>

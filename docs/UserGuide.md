@@ -9,6 +9,7 @@ This guide describes the gradual formalization workflow:
 ## Stage 1: Start Informal
 
 Use `informal` when you want code to typecheck before writing the full proof/term.
+`informal` must appear inside a declaration value or proof.
 
 ```lean
 noncomputable def seed : Nat :=

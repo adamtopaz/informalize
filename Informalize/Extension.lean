@@ -390,13 +390,20 @@ def entriesByFile (fileName : String) : CoreM InformalEntries := do
   let idxs := state.byFile.getD fileName #[]
   return sortEntries (entriesAtIdxs state.entries idxs)
 
+private def declUsesConstant (env : Environment) (declName constName : Name) : Bool :=
+  match env.find? declName with
+  | none =>
+    false
+  | some constInfo =>
+    constInfo.getUsedConstantsAsSet.contains constName
+
 def entriesReferencing (constName : Name) : CoreM InformalEntries := do
   let state ← getInformalState
-  let idxs :=
-    match state.byRefConst.find? constName with
-    | some idxs => idxs
-    | none => #[]
-  return sortEntries (entriesAtIdxs state.entries idxs)
+  let env ← getEnv
+  return sortEntries <| state.entries.filter fun entry =>
+    match entry.declName with
+    | some declName => declUsesConstant env declName constName
+    | none => false
 
 def countsByStatus : CoreM (Nat × Nat) := do
   let state ← getInformalState

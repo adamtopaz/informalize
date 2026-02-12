@@ -28,6 +28,9 @@ noncomputable def interpolationWithComplexTerm : α :=
 noncomputable def interpolationWithConstants : Nat :=
   informal "Use a nontrivial interpolation term {Nat.succ (Nat.succ 0)}"
 
+noncomputable def interpolationWithMultipleTerms : Nat :=
+  informal "Use multiple interpolation terms {Nat.succ 0} and {Nat.pred (Nat.succ 3)}"
+
 noncomputable def inferTypeForSubexpression : Nat :=
   let sketch := informal "Infer this let-bound subexpression from later use"
   Nat.succ sketch
