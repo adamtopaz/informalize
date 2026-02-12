@@ -168,9 +168,19 @@ private def mkEntry
     status
   }
 
-private def runInformalElab (descriptionStx : Syntax) (expectedType : Expr) : TermElabM Expr := do
-  let expectedType ← instantiateMVars expectedType
+private def runInformalElab (descriptionStx : Syntax) (expectedType? : Option Expr) : TermElabM Expr := do
   let descriptionData ← elabDescriptionData descriptionStx
+  let expectedType ←
+    match expectedType? with
+    | some expectedType =>
+      instantiateMVars expectedType
+    | none => do
+      let probeExpectedType ← mkFreshTypeMVar
+      let probeCapturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs probeExpectedType
+      let probeExpr ← mkInformalExpr probeExpectedType probeCapturedFVarIds
+      Term.synthesizeSyntheticMVarsNoPostponing
+      let probeExpr ← instantiateMVars probeExpr
+      instantiateMVars (← Meta.inferType probeExpr)
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
   let expr ← mkInformalExpr expectedType capturedFVarIds
   let entry ← mkEntry .informal descriptionData expectedType capturedFVarIds
@@ -195,9 +205,7 @@ private def runFormalizedTermElab
   return annotateExprWithEntry entry bodyExpr
 
 @[term_elab informalTerm] def elabInformalTerm : TermElab := fun stx expectedType? => do
-  let some expectedType := expectedType?
-    | throwError "`informal` requires an expected type"
-  runInformalElab stx[1] expectedType
+  runInformalElab stx[1] expectedType?
 
 @[term_elab formalizedTerm] def elabFormalizedTerm : TermElab := fun stx expectedType? => do
   runFormalizedTermElab stx[1] stx[3] expectedType?
@@ -205,7 +213,7 @@ private def runFormalizedTermElab
 @[tactic informalTactic] def evalInformalTactic : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
-    let expr ← runInformalElab stx[1] goalType
+    let expr ← runInformalElab stx[1] (some goalType)
     closeMainGoal `informal expr
 
 @[tactic formalizedTactic] def evalFormalizedTactic : Tactic := fun stx => do

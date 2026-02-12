@@ -25,6 +25,12 @@ run_cmd do
   if natSuccRefs.isEmpty then
     throwError "expected at least one entry referencing Nat.succ"
 
+  let inferredSubexprEntries ← Lean.Elab.Command.liftCoreM <| Informalize.entriesByDecl ``inferTypeForSubexpression
+  let some inferredSubexprEntry := inferredSubexprEntries.find? (·.status == .informal)
+    | throwError "expected inferTypeForSubexpression to be tracked as informal"
+  if inferredSubexprEntry.expectedType.isEmpty then
+    throwError "expected inferTypeForSubexpression metadata to include an inferred type"
+
   let (informalCount, _) ← Lean.Elab.Command.liftCoreM Informalize.countsByStatus
   if informalCount == 0 then
     throwError "expected at least one informal entry"
