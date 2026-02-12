@@ -174,6 +174,7 @@ private def runInformalElab (descriptionStx : Syntax) (expectedType : Expr) : Te
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
   let expr ← mkInformalExpr expectedType capturedFVarIds
   let entry ← mkEntry .informal descriptionData expectedType capturedFVarIds
+  addInformalEntry entry
   return annotateExprWithEntry entry expr
 
 private def runFormalizedTermElab
@@ -190,6 +191,7 @@ private def runFormalizedTermElab
   let descriptionData ← elabDescriptionData descriptionStx
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
   let entry ← mkEntry .formalized descriptionData expectedType capturedFVarIds
+  addInformalEntry entry
   return annotateExprWithEntry entry bodyExpr
 
 @[term_elab informalTerm] def elabInformalTerm : TermElab := fun stx expectedType? => do

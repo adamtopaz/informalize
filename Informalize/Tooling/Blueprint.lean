@@ -101,9 +101,12 @@ private def buildDeclDependencyGraph (entries : InformalEntries) : Array (Name �
       return targets.qsort Name.quickLt
     (declName, targets)
 
+private def dependencyEdgesFromEntries (entries : InformalEntries) : Array (Name × Array Name) :=
+  buildDeclDependencyGraph entries
+
 def dependencyEdges : CoreM (Array (Name × Array Name)) := do
   let entries ← Informalize.allEntries
-  pure <| buildDeclDependencyGraph entries
+  pure <| dependencyEdgesFromEntries entries
 
 private def mkSourceJson (source : SourceRef) : Json :=
   Json.mkObj [
@@ -150,7 +153,7 @@ private def flattenEdges (graph : Array (Name × Array Name)) : Array (Name × N
 
 def renderBlueprintJson : CoreM String := do
   let entries ← Informalize.allEntries
-  let graph ← dependencyEdges
+  let graph := dependencyEdgesFromEntries entries
   let edges := flattenEdges graph
   let informalCount : Nat := entries.foldl (init := 0) fun acc entry =>
     if entry.status == .informal then acc + 1 else acc
@@ -171,7 +174,7 @@ def renderBlueprintJson : CoreM String := do
 
 def renderBlueprintMarkdown : CoreM String := do
   let entries ← Informalize.allEntries
-  let graph ← dependencyEdges
+  let graph := dependencyEdgesFromEntries entries
   let informalCount : Nat := entries.foldl (init := 0) fun acc entry =>
     if entry.status == .informal then acc + 1 else acc
   let formalizedCount : Nat := entries.foldl (init := 0) fun acc entry =>

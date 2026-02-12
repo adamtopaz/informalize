@@ -20,3 +20,8 @@ run_cmd do
   let cleanEntries ← Lean.Elab.Command.liftCoreM <| Informalize.entriesByDecl ``migrationClean
   unless cleanEntries.isEmpty do
     throwError "expected clean-stage declaration to have no metadata entries"
+
+  let env ← Lean.Elab.Command.liftCoreM Lean.getEnv
+  let state := Informalize.informalExt.getState env
+  unless state.entries.any (fun entry => entry.sourceInfo.moduleName == `Tests.Unit.Phase2) do
+    throwError "expected extension state to include entries imported from Tests.Unit.Phase2"

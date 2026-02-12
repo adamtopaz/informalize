@@ -41,8 +41,27 @@ run_cmd do
   unless interpolationEntries.any (fun entry => entry.referencedConstants.contains ``Nat.succ) do
     throwError "expected interpolation constants to include Nat.succ"
 
+  let some beforeEntry := beforeEntries[0]?
+    | throwError "expected at least one entry for migrationBefore"
+  let sameFileEntries ← Lean.Elab.Command.liftCoreM <| Informalize.entriesByFile beforeEntry.sourceInfo.fileName
+  unless sameFileEntries.any (fun entry => entry.declName == some ``migrationBefore) do
+    throwError "expected entriesByFile to include migrationBefore"
+
+  let natSuccRefs ← Lean.Elab.Command.liftCoreM <| Informalize.entriesReferencing ``Nat.succ
+  unless natSuccRefs.any (fun entry => entry.declName == some ``formalizedWithInterpolation) do
+    throwError "expected entriesReferencing Nat.succ to include formalizedWithInterpolation"
+
   let (informalCount, formalizedCount) ← Lean.Elab.Command.liftCoreM Informalize.countsByStatus
   if informalCount == 0 then
     throwError "expected at least one informal metadata entry"
   if formalizedCount == 0 then
     throwError "expected at least one formalized metadata entry"
+
+  let env ← Lean.Elab.Command.liftCoreM Lean.getEnv
+  let state := Informalize.informalExt.getState env
+  unless state.entries.any (fun entry =>
+      entry.declName == some ``migrationBefore && entry.status == .informal) do
+    throwError "expected extension state entry for migrationBefore"
+  unless state.entries.any (fun entry =>
+      entry.declName == some ``migrationAfter && entry.status == .formalized) do
+    throwError "expected extension state entry for migrationAfter"

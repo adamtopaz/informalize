@@ -30,6 +30,86 @@ structure InformalEntry where
 
 abbrev InformalEntries := Array InformalEntry
 
+structure InformalState where
+  entries : InformalEntries := #[]
+  informalIdxs : Array Nat := #[]
+  formalizedIdxs : Array Nat := #[]
+  byDecl : NameMap (Array Nat) := {}
+  byFile : Std.HashMap String (Array Nat) := {}
+  byRefConst : NameMap (Array Nat) := {}
+  deriving Inhabited
+
+private def appendIndexByName
+    (index : NameMap (Array Nat))
+    (key : Name)
+    (entryIdx : Nat) : NameMap (Array Nat) :=
+  let values :=
+    match index.find? key with
+    | some values => values
+    | none => #[]
+  index.insert key (values.push entryIdx)
+
+private def appendIndexByFile
+    (index : Std.HashMap String (Array Nat))
+    (key : String)
+    (entryIdx : Nat) : Std.HashMap String (Array Nat) :=
+  let values := index.getD key #[]
+  index.insert key (values.push entryIdx)
+
+private def InformalState.addEntry (state : InformalState) (entry : InformalEntry) : InformalState :=
+  let entryIdx := state.entries.size
+  let informalIdxs :=
+    if entry.status == .informal then
+      state.informalIdxs.push entryIdx
+    else
+      state.informalIdxs
+  let formalizedIdxs :=
+    if entry.status == .formalized then
+      state.formalizedIdxs.push entryIdx
+    else
+      state.formalizedIdxs
+  let byDecl :=
+    match entry.declName with
+    | some declName => appendIndexByName state.byDecl declName entryIdx
+    | none => state.byDecl
+  let byFile := appendIndexByFile state.byFile entry.sourceInfo.fileName entryIdx
+  let byRefConst := Id.run do
+    let mut byRefConst := state.byRefConst
+    let mut seen : NameSet := {}
+    for constName in entry.referencedConstants do
+      if !seen.contains constName then
+        seen := seen.insert constName
+        byRefConst := appendIndexByName byRefConst constName entryIdx
+    return byRefConst
+  {
+    entries := state.entries.push entry
+    informalIdxs
+    formalizedIdxs
+    byDecl
+    byFile
+    byRefConst
+  }
+
+initialize informalExt : PersistentEnvExtension InformalEntry InformalEntry InformalState ←
+  registerPersistentEnvExtension {
+    name := `Informalize.informalExt
+    mkInitial := pure {}
+    addImportedFn := fun imported => do
+      let mut state : InformalState := {}
+      for importedEntries in imported do
+        for entry in importedEntries do
+          state := state.addEntry entry
+      return state
+    addEntryFn := fun state entry =>
+      state.addEntry entry
+    exportEntriesFn := fun state =>
+      state.entries
+    asyncMode := .sync
+  }
+
+def addInformalEntry (entry : InformalEntry) : CoreM Unit :=
+  modifyEnv fun env => informalExt.addEntry env entry
+
 private def statusToString : InformalStatus → String
   | .informal => "informal"
   | .formalized => "formalized"
@@ -128,48 +208,6 @@ def decodeEntryMetadata? (declName : Option Name) (md : MData) : Option Informal
 def annotateExprWithEntry (entry : InformalEntry) (expr : Expr) : Expr :=
   Expr.mdata (encodeEntryMetadata entry) expr
 
-private structure ScanState where
-  visited : ExprSet := {}
-  entries : InformalEntries := #[]
-
-private partial def scanExpr (declName : Option Name) (expr : Expr) (state : ScanState) : ScanState :=
-  if state.visited.contains expr then
-    state
-  else
-    let state := { state with visited := state.visited.insert expr }
-    match expr with
-    | .forallE _ domain body _ =>
-      let state := scanExpr declName domain state
-      scanExpr declName body state
-    | .lam _ domain body _ =>
-      let state := scanExpr declName domain state
-      scanExpr declName body state
-    | .letE _ type value body _ =>
-      let state := scanExpr declName type state
-      let state := scanExpr declName value state
-      scanExpr declName body state
-    | .app fn arg =>
-      let state := scanExpr declName fn state
-      scanExpr declName arg state
-    | .mdata md body =>
-      let state :=
-        match decodeEntryMetadata? declName md with
-        | some entry => { state with entries := state.entries.push entry }
-        | none => state
-      scanExpr declName body state
-    | .proj _ _ body =>
-      scanExpr declName body state
-    | _ =>
-      state
-
-private def entriesInConstant (declName : Name) (constInfo : ConstantInfo) : InformalEntries :=
-  let state := scanExpr (some declName) constInfo.type {}
-  let state :=
-    match constInfo.value? with
-    | some value => scanExpr (some declName) value state
-    | none => state
-  state.entries
-
 private def sourceLt (a b : SourceRef) : Bool :=
   if Name.quickLt a.moduleName b.moduleName then
     true
@@ -220,30 +258,55 @@ private def entryLt (a b : InformalEntry) : Bool :=
 private def sortEntries (entries : InformalEntries) : InformalEntries :=
   entries.qsort entryLt
 
-def allEntries : CoreM InformalEntries := do
+private def getInformalState : CoreM InformalState := do
   let env ← getEnv
-  let entries := env.constants.fold (init := #[]) fun acc declName constInfo =>
-    acc ++ entriesInConstant declName constInfo
-  return sortEntries entries
+  pure (informalExt.getState env)
 
-def entriesByStatus (status : InformalStatus) : CoreM InformalEntries :=
-  return (← allEntries).filter (·.status == status)
+private def entriesAtIdxs (entries : InformalEntries) (idxs : Array Nat) : InformalEntries := Id.run do
+  let mut result : InformalEntries := #[]
+  for idx in idxs do
+    match entries[idx]? with
+    | some entry =>
+      result := result.push entry
+    | none =>
+      pure ()
+  return result
 
-def entriesByDecl (declName : Name) : CoreM InformalEntries :=
-  return (← allEntries).filter (·.declName == some declName)
+def allEntries : CoreM InformalEntries := do
+  let state ← getInformalState
+  return sortEntries state.entries
 
-def entriesByFile (fileName : String) : CoreM InformalEntries :=
-  return (← allEntries).filter (·.sourceInfo.fileName == fileName)
+def entriesByStatus (status : InformalStatus) : CoreM InformalEntries := do
+  let state ← getInformalState
+  let idxs :=
+    match status with
+    | .informal => state.informalIdxs
+    | .formalized => state.formalizedIdxs
+  return sortEntries (entriesAtIdxs state.entries idxs)
 
-def entriesReferencing (constName : Name) : CoreM InformalEntries :=
-  return (← allEntries).filter (fun entry => entry.referencedConstants.contains constName)
+def entriesByDecl (declName : Name) : CoreM InformalEntries := do
+  let state ← getInformalState
+  let idxs :=
+    match state.byDecl.find? declName with
+    | some idxs => idxs
+    | none => #[]
+  return sortEntries (entriesAtIdxs state.entries idxs)
+
+def entriesByFile (fileName : String) : CoreM InformalEntries := do
+  let state ← getInformalState
+  let idxs := state.byFile.getD fileName #[]
+  return sortEntries (entriesAtIdxs state.entries idxs)
+
+def entriesReferencing (constName : Name) : CoreM InformalEntries := do
+  let state ← getInformalState
+  let idxs :=
+    match state.byRefConst.find? constName with
+    | some idxs => idxs
+    | none => #[]
+  return sortEntries (entriesAtIdxs state.entries idxs)
 
 def countsByStatus : CoreM (Nat × Nat) := do
-  let entries ← allEntries
-  let informalCount := entries.foldl (init := 0) fun acc entry =>
-    if entry.status == .informal then acc + 1 else acc
-  let formalizedCount := entries.foldl (init := 0) fun acc entry =>
-    if entry.status == .formalized then acc + 1 else acc
-  pure (informalCount, formalizedCount)
+  let state ← getInformalState
+  pure (state.informalIdxs.size, state.formalizedIdxs.size)
 
 end Informalize

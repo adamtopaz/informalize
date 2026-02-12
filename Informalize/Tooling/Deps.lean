@@ -109,10 +109,13 @@ def dependencyGraph : CoreM (Array (Name × Array Name)) := do
   let declRefs := collectInformalDeclRefs entries
   return buildGraph env declRefs
 
+private def leavesFromGraph (graph : Array (Name × Array Name)) : Array Name :=
+  graph.foldl (init := #[]) fun acc (declName, deps) =>
+    if deps.isEmpty then acc.push declName else acc
+
 def dependencyLeaves : CoreM (Array Name) := do
   let graph ← dependencyGraph
-  return graph.foldl (init := #[]) fun acc (declName, deps) =>
-    if deps.isEmpty then acc.push declName else acc
+  return leavesFromGraph graph
 
 private def renderGraphLine (declName : Name) (deps : Array Name) : String :=
   if deps.isEmpty then
@@ -127,7 +130,7 @@ private def renderGraphLine (declName : Name) (deps : Array Name) : String :=
     logInfo "Informal dependency graph:\n  (no informal declarations found)"
   else
     let lines := graph.map (fun (declName, deps) => renderGraphLine declName deps)
-    let leaves ← liftCoreM dependencyLeaves
+    let leaves := leavesFromGraph graph
     let leafLine :=
       if leaves.isEmpty then
         "Leaves (no informal dependencies): (none)"

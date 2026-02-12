@@ -162,8 +162,11 @@ def hoverEntryForDecl? (declName : Name) : CoreM (Option InformalEntry) := do
     return entries.back?
 
 def entriesForFileHint (fileHint : String) : CoreM InformalEntries := do
-  let entries ← allEntries
   let normalized := fileHint.trimAscii.toString
+  let directEntries ← entriesByFile normalized
+  if !directEntries.isEmpty then
+    return directEntries
+  let entries ← allEntries
   return entries.filter fun entry =>
     let fileName := entry.sourceInfo.fileName
     fileName == normalized || fileDisplayName fileName == normalized

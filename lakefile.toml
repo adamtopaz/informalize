@@ -1,6 +1,6 @@
 name = "informalize"
 version = "0.1.0"
-defaultTargets = ["informalize"]
+defaultTargets = ["tests"]
 
 [[lean_lib]]
 name = "Informalize"
