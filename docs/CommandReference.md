@@ -8,7 +8,7 @@ Prints grouped entries and progress:
 - formalized entries
 - completion ratio
 
-Each entry includes declaration label, expected type snippet, description, and source pointer.
+Each entry includes declaration label, expected type snippet, description, source pointer, and doc reference snippet when present.
 
 ## `#informal_deps`
 
@@ -26,6 +26,8 @@ Runs lints for gradual formalization:
 - declarations that transitively reference `Informalize.Informal`
 - declarations that transitively reference `sorryAx`
 - orphan metadata entries
+- long summaries without doc references
+- invalid doc references (missing files, non-markdown paths, missing markers, duplicate marker IDs)
 
 The command logs warnings for findings and an info message when no issues are found.
 
@@ -52,6 +54,7 @@ Shows hover-style metadata for one declaration:
 
 - status
 - description
+- doc reference (when present)
 - expected type
 - source pointer
 
@@ -61,6 +64,7 @@ Shows a per-file summary panel for the current file in infoview-style text:
 
 - total/informal/formalized counts
 - navigable source pointers for each entry
+- per-entry `doc:` lines when references are present
 
 ## `#informal_panel "<file>"`
 
@@ -75,6 +79,7 @@ Contains:
 - schema version
 - summary counts
 - full entry table
+- doc reference column
 - dependency graph
 
 ## `#export_blueprint "json"`
@@ -83,8 +88,9 @@ Exports a JSON blueprint snapshot as an info message.
 
 JSON includes:
 
-- `schemaVersion`
+- `schemaVersion` (`"2"`)
 - `summary`
 - `entries`
+- `entries[].docRef` (object or `null`)
 - `dependencyGraph`
 - `dependencyEdges`

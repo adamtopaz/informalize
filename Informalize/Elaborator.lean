@@ -7,10 +7,14 @@ open Lean Elab Term Tactic Meta
 namespace Informalize
 
 syntax (name := informalTerm) "informal " interpolatedStr(term) : term
+syntax (name := informalTermFrom) "informal " interpolatedStr(term) " from " str : term
 syntax (name := formalizedTerm) "formalized " interpolatedStr(term) " as " term : term
+syntax (name := formalizedTermFrom) "formalized " interpolatedStr(term) " from " str " as " term : term
 
 syntax (name := informalTactic) "informal " interpolatedStr(term) : tactic
+syntax (name := informalTacticFrom) "informal " interpolatedStr(term) " from " str : tactic
 syntax (name := formalizedTactic) "formalized " interpolatedStr(term) " as " tacticSeq : tactic
+syntax (name := formalizedTacticFrom) "formalized " interpolatedStr(term) " from " str " as " tacticSeq : tactic
 
 private structure DescriptionData where
   renderedDescription : String
@@ -142,6 +146,7 @@ private def mkInformalExpr (expectedType : Expr) (capturedFVarIds : Array FVarId
 private def mkEntry
     (status : InformalStatus)
     (descriptionData : DescriptionData)
+    (docRef? : Option DocRef)
     (expectedType : Expr)
     (capturedFVarIds : Array FVarId) : TermElabM InformalEntry := do
   let expectedType ← instantiateMVars expectedType
@@ -161,6 +166,7 @@ private def mkEntry
   return {
     declName
     description := descriptionData.renderedDescription
+    docRef?
     params
     expectedType := toString ppExpectedType
     referencedConstants
@@ -168,7 +174,28 @@ private def mkEntry
     status
   }
 
-private def runInformalElab (descriptionStx : Syntax) (expectedType? : Option Expr) : TermElabM Expr := do
+private def parseDocRefStx (docRefStx : Syntax) : TermElabM DocRef := do
+  let some raw := docRefStx.isStrLit?
+    | throwErrorAt docRefStx "expected string literal path[#id]"
+  match parseDocRefRaw raw with
+  | Except.ok docRef =>
+    pure docRef
+  | Except.error err =>
+    throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
+
+private def parseDocRefStxInTactic (docRefStx : Syntax) : TacticM DocRef := do
+  let some raw := docRefStx.isStrLit?
+    | throwErrorAt docRefStx "expected string literal path[#id]"
+  match parseDocRefRaw raw with
+  | Except.ok docRef =>
+    pure docRef
+  | Except.error err =>
+    throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
+
+private def runInformalElab
+    (descriptionStx : Syntax)
+    (docRef? : Option DocRef)
+    (expectedType? : Option Expr) : TermElabM Expr := do
   let descriptionData ← elabDescriptionData descriptionStx
   let expectedType ←
     match expectedType? with
@@ -183,12 +210,13 @@ private def runInformalElab (descriptionStx : Syntax) (expectedType? : Option Ex
       instantiateMVars (← Meta.inferType probeExpr)
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
   let expr ← mkInformalExpr expectedType capturedFVarIds
-  let entry ← mkEntry .informal descriptionData expectedType capturedFVarIds
+  let entry ← mkEntry .informal descriptionData docRef? expectedType capturedFVarIds
   addInformalEntry entry
   return annotateExprWithEntry entry expr
 
 private def runFormalizedTermElab
     (descriptionStx : Syntax)
+    (docRef? : Option DocRef)
     (bodyStx : Syntax)
     (expectedType? : Option Expr) : TermElabM Expr := do
   let bodyExpr ← elabTerm bodyStx expectedType?
@@ -200,20 +228,35 @@ private def runFormalizedTermElab
     | none => instantiateMVars (← Meta.inferType bodyExpr)
   let descriptionData ← elabDescriptionData descriptionStx
   let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
-  let entry ← mkEntry .formalized descriptionData expectedType capturedFVarIds
+  let entry ← mkEntry .formalized descriptionData docRef? expectedType capturedFVarIds
   addInformalEntry entry
   return annotateExprWithEntry entry bodyExpr
 
 @[term_elab informalTerm] def elabInformalTerm : TermElab := fun stx expectedType? => do
-  runInformalElab stx[1] expectedType?
+  runInformalElab stx[1] none expectedType?
+
+@[term_elab informalTermFrom] def elabInformalTermFrom : TermElab := fun stx expectedType? => do
+  let docRef ← parseDocRefStx stx[3]
+  runInformalElab stx[1] (some docRef) expectedType?
 
 @[term_elab formalizedTerm] def elabFormalizedTerm : TermElab := fun stx expectedType? => do
-  runFormalizedTermElab stx[1] stx[3] expectedType?
+  runFormalizedTermElab stx[1] none stx[3] expectedType?
+
+@[term_elab formalizedTermFrom] def elabFormalizedTermFrom : TermElab := fun stx expectedType? => do
+  let docRef ← parseDocRefStx stx[3]
+  runFormalizedTermElab stx[1] (some docRef) stx[5] expectedType?
 
 @[tactic informalTactic] def evalInformalTactic : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
-    let expr ← runInformalElab stx[1] (some goalType)
+    let expr ← runInformalElab stx[1] none (some goalType)
+    closeMainGoal `informal expr
+
+@[tactic informalTacticFrom] def evalInformalTacticFrom : Tactic := fun stx => do
+  withMainContext do
+    let goalType ← getMainTarget
+    let docRef ← parseDocRefStxInTactic stx[3]
+    let expr ← runInformalElab stx[1] (some docRef) (some goalType)
     closeMainGoal `informal expr
 
 @[tactic formalizedTactic] def evalFormalizedTactic : Tactic := fun stx => do
@@ -221,7 +264,16 @@ private def runFormalizedTermElab
     let goalType ← getMainTarget
     let body : TSyntax `Lean.Parser.Tactic.tacticSeq := ⟨stx[3]⟩
     let bodyTerm ← `(by $body)
-    let expr ← runFormalizedTermElab stx[1] bodyTerm (some goalType)
+    let expr ← runFormalizedTermElab stx[1] none bodyTerm (some goalType)
+    closeMainGoal `formalized expr
+
+@[tactic formalizedTacticFrom] def evalFormalizedTacticFrom : Tactic := fun stx => do
+  withMainContext do
+    let goalType ← getMainTarget
+    let docRef ← parseDocRefStxInTactic stx[3]
+    let body : TSyntax `Lean.Parser.Tactic.tacticSeq := ⟨stx[5]⟩
+    let bodyTerm ← `(by $body)
+    let expr ← runFormalizedTermElab stx[1] (some docRef) bodyTerm (some goalType)
     closeMainGoal `formalized expr
 
 end Informalize

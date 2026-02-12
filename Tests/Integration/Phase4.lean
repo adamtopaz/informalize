@@ -3,18 +3,18 @@ import Tests.Unit.Phase4
 /--
 info: # Informalize Blueprint
 
-- Schema version: 1
+- Schema version: 2
 - Total entries: 3
 - Informal entries: 2
 - Formalized entries: 1
 
 ## Entries
 
-| Status | Declaration | Type | Description | Source |
-| --- | --- | --- | --- | --- |
-| informal | `phase4Base` | `Nat` | Phase 4 base declaration | `Tests.Unit.Phase4:10:2` |
-| informal | `phase4Dependent` | `Nat` | Phase 4 dependent declaration uses phase4Base.succ | `Tests.Unit.Phase4:13:2` |
-| formalized | `phase4Formalized` | `Nat` | Phase 4 formalized declaration | `Tests.Unit.Phase4:16:2` |
+| Status | Declaration | Type | Description | DocRef | Source |
+| --- | --- | --- | --- | --- | --- |
+| informal | `phase4Base` | `Nat` | Phase 4 base declaration | (none) | `Tests.Unit.Phase4:10:2` |
+| informal | `phase4Dependent` | `Nat` | Phase 4 dependent declaration uses phase4Base.succ | (none) | `Tests.Unit.Phase4:13:2` |
+| formalized | `phase4Formalized` | `Nat` | Phase 4 formalized declaration | (none) | `Tests.Unit.Phase4:16:2` |
 
 ## Dependency Graph
 
@@ -27,7 +27,7 @@ info: # Informalize Blueprint
 
 /--
 info: {"summary": {"totalEntries": 3, "informalEntries": 2, "formalizedEntries": 1},
- "schemaVersion": "1",
+ "schemaVersion": "2",
  "entries":
  [{"status": "informal",
    "sourceInfo":
@@ -40,6 +40,7 @@ info: {"summary": {"totalEntries": 3, "informalEntries": 2, "formalizedEntries":
    "referencedConstants": ["Nat"],
    "params": [],
    "expectedType": "Nat",
+   "docRef": null,
    "description": "Phase 4 base declaration",
    "declName": "phase4Base"},
   {"status": "informal",
@@ -53,6 +54,7 @@ info: {"summary": {"totalEntries": 3, "informalEntries": 2, "formalizedEntries":
    "referencedConstants": ["Nat.succ", "phase4Base", "Nat"],
    "params": [],
    "expectedType": "Nat",
+   "docRef": null,
    "description": "Phase 4 dependent declaration uses phase4Base.succ",
    "declName": "phase4Dependent"},
   {"status": "formalized",
@@ -66,6 +68,7 @@ info: {"summary": {"totalEntries": 3, "informalEntries": 2, "formalizedEntries":
    "referencedConstants": ["Nat"],
    "params": [],
    "expectedType": "Nat",
+   "docRef": null,
    "description": "Phase 4 formalized declaration",
    "declName": "phase4Formalized"}],
  "dependencyGraph":

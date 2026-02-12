@@ -10,7 +10,7 @@ inductive BlueprintFormat where
   | json
   deriving Inhabited, Repr, BEq
 
-def schemaVersion : String := "1"
+def schemaVersion : String := "2"
 
 private def statusToString : InformalStatus → String
   | .informal => "informal"
@@ -124,11 +124,19 @@ private def mkParamJson (param : Name × String) : Json :=
     ("type", param.2)
   ]
 
+private def mkDocRefJson (docRef : DocRef) : Json :=
+  Json.mkObj [
+    ("path", docRef.path),
+    ("id", match docRef.id? with | some id => Json.str id | none => Json.null),
+    ("raw", docRef.raw)
+  ]
+
 private def mkEntryJson (entry : InformalEntry) : Json :=
   Json.mkObj [
     ("declName", match entry.declName with | some n => Json.str (toString n) | none => Json.null),
     ("status", statusToString entry.status),
     ("description", entry.description),
+    ("docRef", match entry.docRef? with | some docRef => mkDocRefJson docRef | none => Json.null),
     ("expectedType", entry.expectedType),
     ("params", Json.arr (entry.params.map mkParamJson)),
     ("referencedConstants", Json.arr (entry.referencedConstants.map (Json.str ∘ toString))),
@@ -190,21 +198,25 @@ def renderBlueprintMarkdown : CoreM String := do
     "",
     "## Entries",
     "",
-    "| Status | Declaration | Type | Description | Source |",
-    "| --- | --- | --- | --- | --- |"
+    "| Status | Declaration | Type | Description | DocRef | Source |",
+    "| --- | --- | --- | --- | --- | --- |"
   ]
 
   let entryLines :=
     if entries.isEmpty then
-      #["| (none) | (none) | (none) | (none) | (none) |"]
+      #["| (none) | (none) | (none) | (none) | (none) | (none) |"]
     else
       entries.map fun entry =>
         let status := statusToString entry.status
         let decl := escapeMd (declLabel entry)
         let typ := escapeMd entry.expectedType
         let desc := escapeMd entry.description
+        let docRef :=
+          match entry.docRef? with
+          | some docRef => escapeMd docRef.raw
+          | none => "(none)"
         let src := escapeMd (sourcePointer entry)
-        s!"| {status} | `{decl}` | `{typ}` | {desc} | `{src}` |"
+        s!"| {status} | `{decl}` | `{typ}` | {desc} | {docRef} | `{src}` |"
 
   let depHeader := #["", "## Dependency Graph", ""]
   let depLines :=

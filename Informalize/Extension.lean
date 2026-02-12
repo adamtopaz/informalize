@@ -18,9 +18,49 @@ inductive InformalStatus where
   | formalized
   deriving Inhabited, Repr, BEq, DecidableEq
 
+structure DocRef where
+  path : String
+  id? : Option String := none
+  raw : String
+  deriving Inhabited, Repr, BEq, DecidableEq
+
+def mkDocRefRaw (path : String) (id? : Option String := none) : String :=
+  match id? with
+  | some id => s!"{path}#{id}"
+  | none => path
+
+def parseDocRefRaw (raw : String) : Except String DocRef := do
+  let raw := raw.trimAscii.toString
+  if raw.isEmpty then
+    throw "doc reference must be non-empty"
+  match raw.splitOn "#" with
+  | [path] =>
+    let path := path.trimAscii.toString
+    if path.isEmpty then
+      throw "doc reference path must be non-empty"
+    return {
+      path
+      raw := mkDocRefRaw path
+    }
+  | [path, id] =>
+    let path := path.trimAscii.toString
+    let id := id.trimAscii.toString
+    if path.isEmpty then
+      throw "doc reference path must be non-empty"
+    if id.isEmpty then
+      throw "doc reference id must be non-empty"
+    return {
+      path
+      id? := some id
+      raw := mkDocRefRaw path (some id)
+    }
+  | _ =>
+    throw "doc reference must match path[#id]"
+
 structure InformalEntry where
   declName : Option Name := none
   description : String := ""
+  docRef? : Option DocRef := none
   params : Array (Name × String) := #[]
   expectedType : String := ""
   referencedConstants : Array Name := #[]
@@ -123,6 +163,10 @@ private def statusOfString? (status : String) : Option InformalStatus :=
 private def markerKey : Name := `Informalize.informalMeta.marker
 private def statusKey : Name := `Informalize.informalMeta.status
 private def descriptionKey : Name := `Informalize.informalMeta.description
+private def docRefPresentKey : Name := `Informalize.informalMeta.docRefPresent
+private def docRefPathKey : Name := `Informalize.informalMeta.docRefPath
+private def docRefIdKey : Name := `Informalize.informalMeta.docRefId
+private def docRefRawKey : Name := `Informalize.informalMeta.docRefRaw
 private def expectedTypeKey : Name := `Informalize.informalMeta.expectedType
 
 private def sourceModuleKey : Name := `Informalize.informalMeta.sourceModule
@@ -144,6 +188,18 @@ def encodeEntryMetadata (entry : InformalEntry) : MData := Id.run do
   md := md.setBool markerKey true
   md := md.setString statusKey (statusToString entry.status)
   md := md.setString descriptionKey entry.description
+  match entry.docRef? with
+  | some docRef =>
+    md := md.setBool docRefPresentKey true
+    md := md.setString docRefPathKey docRef.path
+    md := md.setString docRefRawKey docRef.raw
+    match docRef.id? with
+    | some id =>
+      md := md.setString docRefIdKey id
+    | none =>
+      pure ()
+  | none =>
+    pure ()
   md := md.setString expectedTypeKey entry.expectedType
 
   md := md.setName sourceModuleKey entry.sourceInfo.moduleName
@@ -195,9 +251,32 @@ def decodeEntryMetadata? (declName : Option Name) (md : MData) : Option Informal
       endColumn := md.getNat sourceEndColumnKey 0
     }
 
+    let docRef? :=
+      if md.getBool docRefPresentKey false then
+        let path := md.getString docRefPathKey ""
+        if path.isEmpty then
+          none
+        else
+          let idRaw := md.getString docRefIdKey ""
+          let id? :=
+            if idRaw.isEmpty then
+              none
+            else
+              some idRaw
+          let fallbackRaw := mkDocRefRaw path id?
+          let raw := md.getString docRefRawKey fallbackRaw
+          some {
+            path
+            id?
+            raw := if raw.isEmpty then fallbackRaw else raw
+          }
+      else
+        none
+
     return {
       declName
       description := md.getString descriptionKey ""
+      docRef?
       params
       expectedType := md.getString expectedTypeKey ""
       referencedConstants

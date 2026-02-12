@@ -12,6 +12,8 @@ import Tests.Unit.Phase6
 import Tests.Unit.Phase6Negative
 import Tests.Integration.Phase6
 import Tests.Integration.Phase7
+import Tests.Unit.Phase8
+import Tests.Integration.Phase8
 
 def main : IO Unit := do
-  IO.println "Phase 1 through Phase 7 test modules compiled successfully."
+  IO.println "Phase 1 through Phase 8 test modules compiled successfully."

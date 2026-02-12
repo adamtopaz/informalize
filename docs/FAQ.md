@@ -43,6 +43,22 @@ Use:
 - `#informal_hover <decl>` for metadata hover text,
 - `#informal_panel` for per-file progress summaries.
 
+## How do long-form markdown references work?
+
+Attach `from "path[#id]"` to `informal` or `formalized`.
+
+- `path` should be a repo-relative markdown file.
+- `#id` is optional; if present it targets marker `<!-- informalize:id=<id> -->`.
+
+Example marker:
+
+```md
+<!-- informalize:id=my-proof -->
+Long-form notes.
+```
+
+`#informal_lint` warns when references are invalid (missing file, non-markdown path, missing marker, duplicate marker ids).
+
 ## How do I know I'm fully formalized?
 
 Use `#print axioms` on final targets and confirm `Informalize.Informal` is absent.

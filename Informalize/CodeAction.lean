@@ -72,6 +72,23 @@ private def escapeStringLiteral (s : String) : String :=
 private def escapeDocComment (s : String) : String :=
   (oneLine s).replace "-/" "- /"
 
+private def renderDocRef (docRef : DocRef) : String :=
+  docRef.raw
+
+private def formalizedDocRefSuffix (entry : InformalEntry) : String :=
+  match entry.docRef? with
+  | some docRef =>
+    s!" from \"{escapeStringLiteral (renderDocRef docRef)}\""
+  | none =>
+    ""
+
+private def cleanupDocComment (entry : InformalEntry) : String :=
+  match entry.docRef? with
+  | some docRef =>
+    s!"/-- {escapeDocComment entry.description}\n\nSee: {escapeDocComment (renderDocRef docRef)}\n-/\n"
+  | none =>
+    s!"/-- {escapeDocComment entry.description} -/\n"
+
 def availableActionsForDecl (declName : Name) : CoreM (Array ActionKind) := do
   let entries ← entriesByDecl declName
   let mut kinds : Array ActionKind := #[]
@@ -97,6 +114,7 @@ private def entryIdentityEq (a b : InformalEntry) : Bool :=
   a.declName == b.declName &&
     a.status == b.status &&
     a.description == b.description &&
+    a.docRef? == b.docRef? &&
     sourceEq a.sourceInfo b.sourceInfo
 
 private partial def findBodyForEntry?
@@ -196,7 +214,7 @@ private def mkFormalizeAction (entry : InformalEntry) : CodeAction :=
     source := entry.sourceInfo
     edits := #[{
       range := mkEntryRange entry
-      newText := s!"formalized \"{escapeStringLiteral entry.description}\" as _"
+      newText := s!"formalized \"{escapeStringLiteral entry.description}\"{formalizedDocRefSuffix entry} as _"
     }]
   }
 
@@ -210,7 +228,7 @@ private def mkCleanupAction (entry : InformalEntry) (bodySnippet : String) (docI
     | some docRange =>
       #[{
         range := docRange
-        newText := s!"/-- {escapeDocComment entry.description} -/\n"
+        newText := cleanupDocComment entry
       }, replaceEdit]
     | none =>
       #[replaceEdit]
@@ -267,13 +285,20 @@ private def renderHover (declName : Name) (entry : InformalEntry) : String :=
     match entry.status with
     | .informal => "informal"
     | .formalized => "formalized"
-  "\n".intercalate #[
-    s!"Hover: {declName}",
-    s!"status: {status}",
-    s!"description: {entry.description}",
-    s!"type: {entry.expectedType}",
-    s!"source: {sourcePointer entry.sourceInfo}"
-  ].toList
+  let docLines :=
+    match entry.docRef? with
+    | some docRef => #[s!"doc: {renderDocRef docRef}"]
+    | none => #[]
+  "\n".intercalate (
+    (#[
+      s!"Hover: {declName}",
+      s!"status: {status}",
+      s!"description: {entry.description}"
+    ] ++ docLines ++ #[
+      s!"type: {entry.expectedType}",
+      s!"source: {sourcePointer entry.sourceInfo}"
+    ]).toList
+  )
 
 private def renderPanel (fileLabel : String) (entries : InformalEntries) : String :=
   let informalCount := entries.foldl (init := 0) fun acc entry =>
@@ -284,12 +309,19 @@ private def renderPanel (fileLabel : String) (entries : InformalEntries) : Strin
     if entries.isEmpty then
       #["- (none)"]
     else
-      entries.map fun entry =>
+      entries.foldl (init := #[]) fun acc entry =>
         let status :=
           match entry.status with
           | .informal => "informal"
           | .formalized => "formalized"
-        s!"- [{status}] {entryLabel entry} @ {sourcePointer entry.sourceInfo} - {clip 96 (oneLine entry.description)}"
+        let baseLine :=
+          s!"- [{status}] {entryLabel entry} @ {sourcePointer entry.sourceInfo} - {clip 96 (oneLine entry.description)}"
+        let acc := acc.push baseLine
+        match entry.docRef? with
+        | some docRef =>
+          acc.push s!"  doc: {clip 96 (oneLine (renderDocRef docRef))}"
+        | none =>
+          acc
   let lines :=
     #[
       s!"Informal panel: {fileLabel}",

@@ -28,7 +28,13 @@ private def entryLabel (entry : InformalEntry) : String :=
 private def renderEntry (entry : InformalEntry) : String :=
   let typeSnippet := clip 72 (oneLine entry.expectedType)
   let descSnippet := clip 90 (oneLine entry.description)
-  s!"  {entryLabel entry} : {typeSnippet} - \"{descSnippet}\" @ {sourcePointer entry}"
+  let docSnippet :=
+    match entry.docRef? with
+    | some docRef =>
+      s!" doc: {clip 72 (oneLine docRef.raw)}"
+    | none =>
+      ""
+  s!"  {entryLabel entry} : {typeSnippet} - \"{descSnippet}\" @ {sourcePointer entry}{docSnippet}"
 
 private def renderSection (title : String) (entries : InformalEntries) : Array String :=
   if entries.isEmpty then

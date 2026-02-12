@@ -39,6 +39,27 @@ theorem seed_ok : True := by
 
 `formalized` keeps behavior equal to the provided body and records status as `formalized`.
 
+### Optional long-form references
+
+If the short inline summary is not enough, attach a markdown reference:
+
+```lean
+def seed : Nat :=
+  formalized "now fully implemented" from "docs/DocRefs.md#seed-proof" as Nat.succ 0
+```
+
+References use `path[#id]`:
+
+- `path` is repo-relative markdown file path.
+- `#id` is optional; omit it to reference the full file.
+
+In markdown, define stable marker ids explicitly:
+
+```md
+<!-- informalize:id=seed-proof -->
+Long-form proof notes for `seed`.
+```
+
 ## Stage 3: Clean Final Code
 
 After the declaration is fully formalized and stable, remove wrappers and keep the description as doc text.
@@ -72,6 +93,7 @@ For a complete staged walkthrough, see `Tests/Examples/Workflow.lean` and `docs/
 - `#informal_status` shows informal/formalized progress.
 - `#informal_deps` shows dependency edges between tracked declarations.
 - `#informal_lint` reports `Informal` users, `sorry` users, and orphan entries.
+- `#informal_lint` also checks doc references (missing files, non-markdown paths, missing/duplicate marker ids) and warns on long summaries without doc refs.
 - `#informal_code_actions` suggests migration edits.
 - `#informal_hover <decl>` prints hover metadata for a declaration.
 - `#informal_panel` shows per-file summary and navigation pointers.

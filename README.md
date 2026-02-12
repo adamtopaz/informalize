@@ -8,6 +8,7 @@ then progressively replace them with formal Lean terms and proofs.
 
 - `informal "..."` placeholders that keep projects compiling.
 - `formalized "..." as ...` migration wrappers that preserve prose context.
+- Optional long-form markdown references via `from "path[#id]"`.
 - Metadata tracking for status, source locations, dependencies, and descriptions.
 - Tooling commands for progress dashboards, dependency views, linting, exports,
   and editor-style assistance.
@@ -72,15 +73,31 @@ def seed' : Nat :=
 ### Term forms
 
 - `informal "description with {interpolations}"`
+- `informal "description with {interpolations}" from "docs/DocRefs.md#my-id"`
 - `formalized "description with {interpolations}" as <term>`
+- `formalized "description with {interpolations}" from "docs/DocRefs.md#my-id" as <term>`
 
 ### Tactic forms
 
 - `informal "description with {interpolations}"`
+- `informal "description with {interpolations}" from "docs/DocRefs.md#my-id"`
 - `formalized "description with {interpolations}" as <tacticSeq>`
+- `formalized "description with {interpolations}" from "docs/DocRefs.md#my-id" as <tacticSeq>`
 
 Interpolations can be arbitrary Lean terms. Informalize records constants from
 these terms for dependency tracking.
+
+For long-form notes, point to markdown files with stable markers:
+
+```md
+<!-- informalize:id=my-id -->
+Long-form explanation here.
+```
+
+References use repo-relative paths and optional marker ids:
+
+- `from "docs/DocRefs.md"` (whole file)
+- `from "docs/DocRefs.md#my-id"` (specific marker)
 
 ## Command reference (quick)
 
@@ -157,8 +174,8 @@ Core library:
 
 Tests and examples:
 
-- `Tests/Unit/Phase1.lean` ... `Tests/Unit/Phase6Negative.lean`
-- `Tests/Integration/Phase1.lean` ... `Tests/Integration/Phase7.lean`
+- `Tests/Unit/Phase1.lean` ... `Tests/Unit/Phase8.lean`
+- `Tests/Integration/Phase1.lean` ... `Tests/Integration/Phase8.lean`
 - `Tests/Examples/Workflow.lean`
 - `Tests.lean`
 
@@ -172,4 +189,5 @@ Tests and examples:
 ## Current status
 
 The planned phases are implemented, including extra hardening phases beyond the
-original 1-5 roadmap (completion gate tests and full workflow example).
+original 1-5 roadmap (completion gate tests, full workflow examples, and doc
+reference coverage).
