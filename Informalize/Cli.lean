@@ -1,9 +1,13 @@
-import Lean
-import Informalize.CodeAction
-import Informalize.Tooling.Status
-import Informalize.Tooling.Deps
-import Informalize.Tooling.Blueprint
-import Informalize.Tooling.Linter
+module
+
+public import Lean
+public import Informalize.CodeAction
+public import Informalize.Tooling.Status
+public import Informalize.Tooling.Deps
+public import Informalize.Tooling.Blueprint
+public import Informalize.Tooling.Linter
+
+public section
 
 open Lean
 

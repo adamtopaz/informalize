@@ -1,6 +1,11 @@
-import Lean
-import Lean.DeclarationRange
-import Informalize.Extension
+module
+
+public import Lean
+public import Lean.DeclarationRange
+public import Informalize.Extension
+public meta import Init.Data.String.Legacy
+
+public section
 
 open Lean Elab Command Meta Term
 
@@ -397,34 +402,38 @@ def renderPanelForFileHint (fileHint : String) : CoreM String := do
 syntax (name := informalCodeActionsCmd) "#informal_code_actions" : command
 syntax (name := informalCodeActionsForCmd) "#informal_code_actions" ppSpace ident : command
 
-@[command_elab informalCodeActionsCmd] def elabInformalCodeActionsCmd : CommandElab := fun _stx => do
-  let entries ← liftCoreM allEntries
-  let actions ← collectActions entries
-  logInfo <| renderActions s!"Code actions ({actions.size}):" actions
+@[command_elab informalCodeActionsCmd] meta unsafe def elabInformalCodeActionsCmd : CommandElab := fun _stx => do
+  let renderCodeActionsCmd ← liftCoreM <| Lean.evalConst (CoreM String) ``Informalize.renderCodeActions
+  logInfo (← liftCoreM renderCodeActionsCmd)
 
-@[command_elab informalCodeActionsForCmd] def elabInformalCodeActionsForCmd : CommandElab := fun stx => do
+@[command_elab informalCodeActionsForCmd] meta unsafe def elabInformalCodeActionsForCmd : CommandElab := fun stx => do
   let declName := stx[1].getId
-  let entries ← liftCoreM <| entriesByDecl declName
-  let actions ← collectActions entries
-  logInfo <| renderActions s!"Code actions for {declName} ({actions.size}):" actions
+  let renderCodeActionsForDeclCmd ← liftCoreM <| Lean.evalConst (Name → CoreM String) ``Informalize.renderCodeActionsForDecl
+  logInfo (← liftCoreM <| renderCodeActionsForDeclCmd declName)
 
 syntax (name := informalHoverCmd) "#informal_hover" ppSpace ident : command
 
-@[command_elab informalHoverCmd] def elabInformalHoverCmd : CommandElab := fun stx => do
+@[command_elab informalHoverCmd] meta unsafe def elabInformalHoverCmd : CommandElab := fun stx => do
   let declName := stx[1].getId
-  logInfo (← liftCoreM <| renderHoverForDecl declName)
+  let renderHoverCmd ← liftCoreM <| Lean.evalConst (Name → CoreM String) ``Informalize.renderHoverForDecl
+  logInfo (← liftCoreM <| renderHoverCmd declName)
 
 syntax (name := informalPanelCmd) "#informal_panel" : command
 syntax (name := informalPanelForCmd) "#informal_panel" ppSpace str : command
 
-@[command_elab informalPanelCmd] def elabInformalPanelCmd : CommandElab := fun _stx => do
+@[command_elab informalPanelCmd] meta unsafe def elabInformalPanelCmd : CommandElab := fun _stx => do
   let fileName ← getFileName
-  let entries ← liftCoreM <| entriesForFileHint fileName
-  logInfo <| renderPanel (fileDisplayName fileName) entries
+  let fileHint :=
+    match fileName.splitOn "/" |>.getLast? with
+    | some hint => hint
+    | none => fileName
+  let renderPanelForFileHintCmd ← liftCoreM <| Lean.evalConst (String → CoreM String) ``Informalize.renderPanelForFileHint
+  logInfo (← liftCoreM <| renderPanelForFileHintCmd fileHint)
 
-@[command_elab informalPanelForCmd] def elabInformalPanelForCmd : CommandElab := fun stx => do
+@[command_elab informalPanelForCmd] meta unsafe def elabInformalPanelForCmd : CommandElab := fun stx => do
   let some fileHint := stx[1].isStrLit?
     | throwError "expected string literal path, e.g. #informal_panel \"MyFile.lean\""
-  logInfo (← liftCoreM <| renderPanelForFileHint fileHint)
+  let renderPanelForFileHintCmd ← liftCoreM <| Lean.evalConst (String → CoreM String) ``Informalize.renderPanelForFileHint
+  logInfo (← liftCoreM <| renderPanelForFileHintCmd fileHint)
 
 end Informalize

@@ -1,5 +1,9 @@
-import Lean
-import Informalize.Extension
+module
+
+public import Lean
+public import Informalize.Extension
+
+public section
 
 open Lean Elab Command
 
@@ -140,7 +144,8 @@ def renderDependencyGraph : CoreM String := do
       #["Informal dependency graph:"] ++ lines ++ #["", leafLine]
     return "\n".intercalate output.toList
 
-@[command_elab informalDepsCmd] def elabInformalDepsCmd : CommandElab := fun _stx => do
-  logInfo (← liftCoreM renderDependencyGraph)
+@[command_elab informalDepsCmd] meta unsafe def elabInformalDepsCmd : CommandElab := fun _stx => do
+  let renderDepsCmd ← liftCoreM <| Lean.evalConst (CoreM String) ``Informalize.Tooling.renderDependencyGraph
+  logInfo (← liftCoreM renderDepsCmd)
 
 end Informalize.Tooling

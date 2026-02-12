@@ -64,7 +64,7 @@ run_cmd do
 /--
 info: Code actions for phase8InformalWithRef (1):
 - Formalize this [formalize] for phase8InformalWithRef @ Tests.Unit.Phase8:4:2
-    - 4:2-4:105 => formalized "Phase 8 informal declaration with a long-form reference" from "docs/DocRefs.md#phase8-sketch" as _
+    - suggestion => formalized "Phase 8 informal declaration with a long-form reference" from "docs/DocRefs.md#phase8-sketch" as _
 -/
 #guard_msgs(info, drop warning) in
 #informal_code_actions phase8InformalWithRef
@@ -72,8 +72,8 @@ info: Code actions for phase8InformalWithRef (1):
 /--
 info: Code actions for phase8FormalizedWithRef (1):
 - Clean up [cleanup] for phase8FormalizedWithRef @ Tests.Unit.Phase8:7:2
-    - 6:0-6:0 => /-- Phase 8 formalized declaration with a long-form reference  See: docs/DocRefs.md#phase8-proof -/
-    - 7:2-7:122 => Nat.succ 8
+    - suggestion => Nat.succ 8
+    - doc-comment => /-- Phase 8 formalized declaration with a long-form reference  See: docs/DocRefs.md#phase8-proof -/
 -/
 #guard_msgs(info, drop warning) in
 #informal_code_actions phase8FormalizedWithRef

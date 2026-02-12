@@ -1,6 +1,11 @@
-import Lean
-import Informalize.Axiom
-import Informalize.Extension
+module
+
+public import Lean
+public import Informalize.Axiom
+public import Informalize.Extension
+public meta import Informalize.Extension
+
+public section
 
 open Lean Elab Term Tactic Meta
 
@@ -16,12 +21,12 @@ syntax (name := informalTacticFrom) "informal " interpolatedStr(term) " from " s
 syntax (name := formalizedTactic) "formalized " interpolatedStr(term) " as " tacticSeq : tactic
 syntax (name := formalizedTacticFrom) "formalized " interpolatedStr(term) " from " str " as " tacticSeq : tactic
 
-private structure DescriptionData where
+structure DescriptionData where
   renderedDescription : String
   interpolationExprs : Array Expr
   referencedConstants : Array Name
 
-private def collectConstantsFromExpr (expr : Expr) (seen : NameSet) (constants : Array Name) : NameSet × Array Name :=
+meta def collectConstantsFromExpr (expr : Expr) (seen : NameSet) (constants : Array Name) : NameSet × Array Name :=
   match expr with
   | .forallE _ domain body _ =>
     let (seen, constants) := collectConstantsFromExpr domain seen constants
@@ -48,7 +53,7 @@ private def collectConstantsFromExpr (expr : Expr) (seen : NameSet) (constants :
   | _ =>
     (seen, constants)
 
-private def collectConstants (exprs : Array Expr) : Array Name := Id.run do
+meta def collectConstants (exprs : Array Expr) : Array Name := Id.run do
   let mut seen : NameSet := {}
   let mut constants : Array Name := #[]
   for expr in exprs do
@@ -57,7 +62,7 @@ private def collectConstants (exprs : Array Expr) : Array Name := Id.run do
     constants := constants'
   return constants
 
-private def elabDescriptionData (descriptionStx : Syntax) : TermElabM DescriptionData := do
+meta def elabDescriptionData (descriptionStx : Syntax) : TermElabM DescriptionData := do
   let mut renderedDescription := ""
   let mut interpolationExprs : Array Expr := #[]
   for chunk in descriptionStx.getArgs do
@@ -77,14 +82,14 @@ private def elabDescriptionData (descriptionStx : Syntax) : TermElabM Descriptio
     referencedConstants
   }
 
-private def collectCapturedFVarIds (interpolationExprs : Array Expr) (expectedType : Expr) : Array FVarId := Id.run do
+meta def collectCapturedFVarIds (interpolationExprs : Array Expr) (expectedType : Expr) : Array FVarId := Id.run do
   let mut fvarState : CollectFVars.State := {}
   for expr in interpolationExprs do
     fvarState := collectFVars fvarState expr
   fvarState := collectFVars fvarState expectedType
   fvarState.fvarIds
 
-private def mkSourceRef : TermElabM SourceRef := do
+meta def mkSourceRef : TermElabM SourceRef := do
   let moduleName ← getMainModule
   let fileName ← getFileName
   let fileMap ← getFileMap
@@ -106,7 +111,7 @@ private def mkSourceRef : TermElabM SourceRef := do
     endColumn
   }
 
-private def mkParams (fvarIds : Array FVarId) : TermElabM (Array (Name × String)) := do
+meta def mkParams (fvarIds : Array FVarId) : TermElabM (Array (Name × String)) := do
   let mut params : Array (Name × String) := #[]
   for fvarId in fvarIds do
     let localDecl ← fvarId.getDecl
@@ -115,7 +120,7 @@ private def mkParams (fvarIds : Array FVarId) : TermElabM (Array (Name × String
     params := params.push (localDecl.userName, toString ppType)
   return params
 
-private def mkUniqueTag : TermElabM Name := do
+meta def mkUniqueTag : TermElabM Name := do
   let ref ← getRef
   if let (some startSPos, some endSPos) := (ref.getPos?, ref.getTailPos?) then
     let fileMap ← getFileMap
@@ -133,7 +138,7 @@ private def mkUniqueTag : TermElabM Name := do
   else
     SorryLabelView.encode {}
 
-private def mkInformalExpr (expectedType : Expr) (capturedFVarIds : Array FVarId) : TermElabM Expr := do
+meta def mkInformalExpr (expectedType : Expr) (capturedFVarIds : Array FVarId) : TermElabM Expr := do
   let capturedFVars := capturedFVarIds.map mkFVar
   let alpha ← mkForallFVars capturedFVars expectedType
   let tag ← mkUniqueTag
@@ -143,7 +148,7 @@ private def mkInformalExpr (expectedType : Expr) (capturedFVarIds : Array FVarId
   let informalWithTag := mkApp2 informalConst taggedAlpha (toExpr tag)
   return mkAppN informalWithTag capturedFVars
 
-private def mkEntry
+meta def mkEntry
     (status : InformalStatus)
     (descriptionData : DescriptionData)
     (docRef? : Option DocRef)
@@ -174,7 +179,7 @@ private def mkEntry
     status
   }
 
-private def parseDocRefStx (docRefStx : Syntax) : TermElabM DocRef := do
+meta def parseDocRefStx (docRefStx : Syntax) : TermElabM DocRef := do
   let some raw := docRefStx.isStrLit?
     | throwErrorAt docRefStx "expected string literal path[#id]"
   match parseDocRefRaw raw with
@@ -183,7 +188,7 @@ private def parseDocRefStx (docRefStx : Syntax) : TermElabM DocRef := do
   | Except.error err =>
     throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
 
-private def parseDocRefStxInTactic (docRefStx : Syntax) : TacticM DocRef := do
+meta def parseDocRefStxInTactic (docRefStx : Syntax) : TacticM DocRef := do
   let some raw := docRefStx.isStrLit?
     | throwErrorAt docRefStx "expected string literal path[#id]"
   match parseDocRefRaw raw with
@@ -192,7 +197,7 @@ private def parseDocRefStxInTactic (docRefStx : Syntax) : TacticM DocRef := do
   | Except.error err =>
     throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
 
-private def runInformalElab
+meta def runInformalElab
     (descriptionStx : Syntax)
     (docRef? : Option DocRef)
     (expectedType? : Option Expr) : TermElabM Expr := do
@@ -214,7 +219,7 @@ private def runInformalElab
   addInformalEntry entry
   return annotateExprWithEntry entry expr
 
-private def runFormalizedTermElab
+meta def runFormalizedTermElab
     (descriptionStx : Syntax)
     (docRef? : Option DocRef)
     (bodyStx : Syntax)
@@ -232,34 +237,34 @@ private def runFormalizedTermElab
   addInformalEntry entry
   return annotateExprWithEntry entry bodyExpr
 
-@[term_elab informalTerm] def elabInformalTerm : TermElab := fun stx expectedType? => do
+@[term_elab informalTerm] meta def elabInformalTerm : TermElab := fun stx expectedType? => do
   runInformalElab stx[1] none expectedType?
 
-@[term_elab informalTermFrom] def elabInformalTermFrom : TermElab := fun stx expectedType? => do
+@[term_elab informalTermFrom] meta def elabInformalTermFrom : TermElab := fun stx expectedType? => do
   let docRef ← parseDocRefStx stx[3]
   runInformalElab stx[1] (some docRef) expectedType?
 
-@[term_elab formalizedTerm] def elabFormalizedTerm : TermElab := fun stx expectedType? => do
+@[term_elab formalizedTerm] meta def elabFormalizedTerm : TermElab := fun stx expectedType? => do
   runFormalizedTermElab stx[1] none stx[3] expectedType?
 
-@[term_elab formalizedTermFrom] def elabFormalizedTermFrom : TermElab := fun stx expectedType? => do
+@[term_elab formalizedTermFrom] meta def elabFormalizedTermFrom : TermElab := fun stx expectedType? => do
   let docRef ← parseDocRefStx stx[3]
   runFormalizedTermElab stx[1] (some docRef) stx[5] expectedType?
 
-@[tactic informalTactic] def evalInformalTactic : Tactic := fun stx => do
+@[tactic informalTactic] meta def evalInformalTactic : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
     let expr ← runInformalElab stx[1] none (some goalType)
     closeMainGoal `informal expr
 
-@[tactic informalTacticFrom] def evalInformalTacticFrom : Tactic := fun stx => do
+@[tactic informalTacticFrom] meta def evalInformalTacticFrom : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
     let docRef ← parseDocRefStxInTactic stx[3]
     let expr ← runInformalElab stx[1] (some docRef) (some goalType)
     closeMainGoal `informal expr
 
-@[tactic formalizedTactic] def evalFormalizedTactic : Tactic := fun stx => do
+@[tactic formalizedTactic] meta def evalFormalizedTactic : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
     let body : TSyntax `Lean.Parser.Tactic.tacticSeq := ⟨stx[3]⟩
@@ -267,7 +272,7 @@ private def runFormalizedTermElab
     let expr ← runFormalizedTermElab stx[1] none bodyTerm (some goalType)
     closeMainGoal `formalized expr
 
-@[tactic formalizedTacticFrom] def evalFormalizedTacticFrom : Tactic := fun stx => do
+@[tactic formalizedTacticFrom] meta def evalFormalizedTacticFrom : Tactic := fun stx => do
   withMainContext do
     let goalType ← getMainTarget
     let docRef ← parseDocRefStxInTactic stx[3]

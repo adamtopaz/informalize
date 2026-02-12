@@ -27,7 +27,7 @@ Entries:
 /--
 info: Code actions for phase5Placeholder (1):
 - Formalize this [formalize] for phase5Placeholder @ Tests.Unit.Phase5:4:2
-    - 4:2-4:44 => formalized "Phase 5 placeholder declaration" as _
+    - suggestion => formalized "Phase 5 placeholder declaration" as _
 -/
 #guard_msgs(info, drop warning) in
 #informal_code_actions phase5Placeholder
@@ -35,8 +35,8 @@ info: Code actions for phase5Placeholder (1):
 /--
 info: Code actions for phase5Formalized (1):
 - Clean up [cleanup] for phase5Formalized @ Tests.Unit.Phase5:7:2
-    - 6:0-6:0 => /-- Phase 5 formalized declaration -/
-    - 7:2-7:75 => phase5Placeholder.succ
+    - suggestion => phase5Placeholder.succ
+    - doc-comment => /-- Phase 5 formalized declaration -/
 -/
 #guard_msgs(info, drop warning) in
 #informal_code_actions phase5Formalized

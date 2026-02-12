@@ -1,6 +1,10 @@
-import Lean
-import Informalize.Axiom
-import Informalize.Extension
+module
+
+public import Lean
+public import Informalize.Axiom
+public import Informalize.Extension
+
+public section
 
 open Lean Elab Command
 
@@ -192,7 +196,8 @@ def runLinter : CommandElabM Unit := do
 
 syntax (name := informalLintCmd) "#informal_lint" : command
 
-@[command_elab informalLintCmd] def elabInformalLintCmd : CommandElab := fun _stx => do
-  runLinter
+@[command_elab informalLintCmd] meta unsafe def elabInformalLintCmd : CommandElab := fun _stx => do
+  let runLinterCmd ← liftCoreM <| Lean.evalConst (CommandElabM Unit) ``Informalize.Tooling.runLinter
+  runLinterCmd
 
 end Informalize.Tooling

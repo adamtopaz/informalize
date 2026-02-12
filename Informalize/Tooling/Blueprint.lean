@@ -1,5 +1,9 @@
-import Lean
-import Informalize.Extension
+module
+
+public import Lean
+public import Informalize.Extension
+
+public section
 
 open Lean Elab Command
 
@@ -231,16 +235,20 @@ def renderBlueprintMarkdown : CoreM String := do
 
   return "\n".intercalate (header ++ entryLines ++ depHeader ++ depLines).toList
 
-private def emitBlueprint (fmt : BlueprintFormat) : CommandElabM Unit := do
+private meta unsafe def emitBlueprint (fmt : BlueprintFormat) : CommandElabM Unit := do
   let output ←
     match fmt with
-      | .markdown => liftCoreM renderBlueprintMarkdown
-      | .json => liftCoreM renderBlueprintJson
+      | .markdown => do
+        let renderMarkdown ← liftCoreM <| Lean.evalConst (CoreM String) ``Informalize.Tooling.renderBlueprintMarkdown
+        liftCoreM renderMarkdown
+      | .json => do
+        let renderJson ← liftCoreM <| Lean.evalConst (CoreM String) ``Informalize.Tooling.renderBlueprintJson
+        liftCoreM renderJson
   logInfo output
 
 syntax (name := exportBlueprintCmd) "#export_blueprint" (ppSpace str)? : command
 
-@[command_elab exportBlueprintCmd] def elabExportBlueprintCmd : CommandElab := fun stx => do
+@[command_elab exportBlueprintCmd] meta unsafe def elabExportBlueprintCmd : CommandElab := fun stx => do
   match stx with
   | `(command| #export_blueprint) =>
     emitBlueprint .markdown

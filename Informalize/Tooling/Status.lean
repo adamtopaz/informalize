@@ -1,5 +1,9 @@
-import Lean
-import Informalize.Extension
+module
+
+public import Lean
+public import Informalize.Extension
+
+public section
 
 open Lean Elab Command
 
@@ -63,7 +67,8 @@ def renderStatus : CoreM String := do
 
   return "\n".intercalate lines.toList
 
-@[command_elab informalStatusCmd] def elabInformalStatusCmd : CommandElab := fun _stx => do
-  logInfo (← liftCoreM renderStatus)
+@[command_elab informalStatusCmd] meta unsafe def elabInformalStatusCmd : CommandElab := fun _stx => do
+  let renderStatusCmd ← liftCoreM <| Lean.evalConst (CoreM String) ``Informalize.Tooling.renderStatus
+  logInfo (← liftCoreM renderStatusCmd)
 
 end Informalize.Tooling

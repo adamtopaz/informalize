@@ -1,4 +1,8 @@
-import Informalize.Cli
+module
+
+public import Informalize.Cli
+
+public section
 
 def main (args : List String) : IO UInt32 := do
   let result ← Informalize.Cli.invoke args.toArray

@@ -1,8 +1,10 @@
-import Informalize.Axiom
-import Informalize.Extension
-import Informalize.Elaborator
-import Informalize.CodeAction
-import Informalize.Tooling.Status
-import Informalize.Tooling.Deps
-import Informalize.Tooling.Blueprint
-import Informalize.Tooling.Linter
+module
+
+public import Informalize.Axiom
+public import Informalize.Extension
+public import Informalize.Elaborator
+public import Informalize.CodeAction
+public import Informalize.Tooling.Status
+public import Informalize.Tooling.Deps
+public import Informalize.Tooling.Blueprint
+public import Informalize.Tooling.Linter
