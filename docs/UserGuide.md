@@ -99,6 +99,16 @@ For a complete staged walkthrough, see `Tests/Examples/Workflow.lean` and `docs/
 - `#informal_panel` shows per-file summary and navigation pointers.
 - `#export_blueprint` and `#export_blueprint "json"` export project snapshots.
 
+Outside Lean files, use the CLI equivalents:
+
+- `lake exe informalize status --module <Module.Name>`
+- `lake exe informalize deps --module <Module.Name>`
+- `lake exe informalize lint --module <Module.Name>`
+- `lake exe informalize blueprint --module <Module.Name> [--format markdown|json]`
+- `lake exe informalize code-actions --module <Module.Name> [--decl <Decl.Name>]`
+- `lake exe informalize hover --module <Module.Name> --decl <Decl.Name>`
+- `lake exe informalize panel --module <Module.Name> --file <FileHint>`
+
 ## Final Soundness Gate
 
 For target theorems meant to be fully formalized, check:

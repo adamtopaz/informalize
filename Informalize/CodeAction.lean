@@ -280,6 +280,55 @@ private def renderActions (header : String) (actions : Array CodeAction) : Strin
       #[header] ++ (actions.foldl (init := #[]) fun acc action => acc ++ renderAction action)
   "\n".intercalate lines.toList
 
+private def prettyBodyExprCore (bodyExpr : Expr) : CoreM String := do
+  let env ← getEnv
+  let opts ← getOptions
+  let fmt ← (Lean.PrettyPrinter.ppExprLegacy env {} {} opts bodyExpr : IO Format)
+  return oneLine (toString fmt)
+
+private def renderCodeActionSuggestion (entry : InformalEntry) : CoreM (Array String) :=
+  match entry.status with
+  | .informal =>
+    let suggestion := s!"formalized \"{escapeStringLiteral entry.description}\"{formalizedDocRefSuffix entry} as _"
+    pure #[
+      s!"- Formalize this [formalize] for {entryLabel entry} @ {sourcePointer entry.sourceInfo}",
+      s!"    - suggestion => {clip 120 (oneLine suggestion)}"
+    ]
+  | .formalized => do
+    let bodyExpr? ← bodyExprForEntry? entry
+    let bodySnippet ←
+      match bodyExpr? with
+      | some bodyExpr =>
+        try
+          prettyBodyExprCore bodyExpr
+        catch _ =>
+          pure "_"
+      | none =>
+        pure "_"
+    pure #[
+      s!"- Clean up [cleanup] for {entryLabel entry} @ {sourcePointer entry.sourceInfo}",
+      s!"    - suggestion => {clip 120 (oneLine bodySnippet)}",
+      s!"    - doc-comment => {clip 120 (oneLine (cleanupDocComment entry))}"
+    ]
+
+private def renderCodeActionSuggestions
+    (header : String)
+    (entries : InformalEntries) : CoreM String := do
+  if entries.isEmpty then
+    return "\n".intercalate #[header, "(none)"].toList
+  let mut lines : Array String := #[header]
+  for entry in entries do
+    lines := lines ++ (← renderCodeActionSuggestion entry)
+  return "\n".intercalate lines.toList
+
+def renderCodeActions : CoreM String := do
+  let entries ← allEntries
+  renderCodeActionSuggestions s!"Code actions ({entries.size}):" entries
+
+def renderCodeActionsForDecl (declName : Name) : CoreM String := do
+  let entries ← entriesByDecl declName
+  renderCodeActionSuggestions s!"Code actions for {declName} ({entries.size}):" entries
+
 private def renderHover (declName : Name) (entry : InformalEntry) : String :=
   let status :=
     match entry.status with
@@ -299,6 +348,14 @@ private def renderHover (declName : Name) (entry : InformalEntry) : String :=
       s!"source: {sourcePointer entry.sourceInfo}"
     ]).toList
   )
+
+def renderHoverForDecl (declName : Name) : CoreM String := do
+  let entry? ← hoverEntryForDecl? declName
+  match entry? with
+  | some entry =>
+    return renderHover declName entry
+  | none =>
+    return s!"Hover: {declName}\n(no metadata found)"
 
 private def renderPanel (fileLabel : String) (entries : InformalEntries) : String :=
   let informalCount := entries.foldl (init := 0) fun acc entry =>
@@ -333,6 +390,10 @@ private def renderPanel (fileLabel : String) (entries : InformalEntries) : Strin
     ] ++ entryLines
   "\n".intercalate lines.toList
 
+def renderPanelForFileHint (fileHint : String) : CoreM String := do
+  let entries ← entriesForFileHint fileHint
+  return renderPanel fileHint entries
+
 syntax (name := informalCodeActionsCmd) "#informal_code_actions" : command
 syntax (name := informalCodeActionsForCmd) "#informal_code_actions" ppSpace ident : command
 
@@ -351,12 +412,7 @@ syntax (name := informalHoverCmd) "#informal_hover" ppSpace ident : command
 
 @[command_elab informalHoverCmd] def elabInformalHoverCmd : CommandElab := fun stx => do
   let declName := stx[1].getId
-  let entry? ← liftCoreM <| hoverEntryForDecl? declName
-  match entry? with
-  | some entry =>
-    logInfo <| renderHover declName entry
-  | none =>
-    logInfo s!"Hover: {declName}\n(no metadata found)"
+  logInfo (← liftCoreM <| renderHoverForDecl declName)
 
 syntax (name := informalPanelCmd) "#informal_panel" : command
 syntax (name := informalPanelForCmd) "#informal_panel" ppSpace str : command
@@ -369,7 +425,6 @@ syntax (name := informalPanelForCmd) "#informal_panel" ppSpace str : command
 @[command_elab informalPanelForCmd] def elabInformalPanelForCmd : CommandElab := fun stx => do
   let some fileHint := stx[1].isStrLit?
     | throwError "expected string literal path, e.g. #informal_panel \"MyFile.lean\""
-  let entries ← liftCoreM <| entriesForFileHint fileHint
-  logInfo <| renderPanel fileHint entries
+  logInfo (← liftCoreM <| renderPanelForFileHint fileHint)
 
 end Informalize

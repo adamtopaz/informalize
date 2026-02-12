@@ -42,8 +42,8 @@ private def renderSection (title : String) (entries : InformalEntries) : Array S
   else
     #[s!"{title} ({entries.size}):"] ++ entries.map renderEntry
 
-@[command_elab informalStatusCmd] def elabInformalStatusCmd : CommandElab := fun _stx => do
-  let all ← liftCoreM Informalize.allEntries
+def renderStatus : CoreM String := do
+  let all ← Informalize.allEntries
   let informal := all.filter (·.status == .informal)
   let formalized := all.filter (·.status == .formalized)
 
@@ -61,6 +61,9 @@ private def renderSection (title : String) (entries : InformalEntries) : Array S
     renderSection "Formalized" formalized ++
     #["", s!"Progress: {completed}/{total} ({progressPct}%)"]
 
-  logInfo ("\n".intercalate lines.toList)
+  return "\n".intercalate lines.toList
+
+@[command_elab informalStatusCmd] def elabInformalStatusCmd : CommandElab := fun _stx => do
+  logInfo (← liftCoreM renderStatus)
 
 end Informalize.Tooling

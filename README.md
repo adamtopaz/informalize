@@ -119,6 +119,16 @@ References use repo-relative paths and optional marker ids:
 - `#export_blueprint` (Markdown)
 - `#export_blueprint "json"` (JSON)
 
+CLI equivalents:
+
+- `lake exe informalize status --module <Module.Name>`
+- `lake exe informalize deps --module <Module.Name>`
+- `lake exe informalize lint --module <Module.Name>`
+- `lake exe informalize blueprint --module <Module.Name> [--format markdown|json]`
+- `lake exe informalize code-actions --module <Module.Name> [--decl <Decl.Name>]`
+- `lake exe informalize hover --module <Module.Name> --decl <Decl.Name>`
+- `lake exe informalize panel --module <Module.Name> --file <FileHint>`
+
 JSON includes:
 
 - `schemaVersion`

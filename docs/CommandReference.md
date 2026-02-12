@@ -1,5 +1,25 @@
 # Informalize Command Reference
 
+## CLI equivalents
+
+You can run command-line equivalents outside a Lean file:
+
+```bash
+lake exe informalize status --module Tests.Unit.Phase3
+lake exe informalize deps --module Tests.Unit.Phase3
+lake exe informalize lint --module Tests.Integration.Phase8
+lake exe informalize blueprint --module Tests.Unit.Phase4
+lake exe informalize blueprint --module Tests.Unit.Phase4 --format json
+lake exe informalize code-actions --module Tests.Unit.Phase5 --decl phase5Formalized
+lake exe informalize hover --module Tests.Integration.Phase8 --decl integrationPhase8FormalizedWithRef
+lake exe informalize panel --module Tests.Integration.Phase8 --file Phase8.lean
+```
+
+- `--module` / `-m` is required and repeatable.
+- `--format` is only for `blueprint` (`markdown` or `json`).
+- `--decl` is used by `code-actions` (optional) and `hover` (required).
+- `--file` is required for `panel`.
+
 ## `#informal_status`
 
 Prints grouped entries and progress:

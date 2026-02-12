@@ -123,11 +123,11 @@ private def renderGraphLine (declName : Name) (deps : Array Name) : String :=
   else
     s!"  {declName} -> {", ".intercalate (deps.toList.map toString)}"
 
-@[command_elab informalDepsCmd] def elabInformalDepsCmd : CommandElab := fun _stx => do
-  let graph ← liftCoreM dependencyGraph
+def renderDependencyGraph : CoreM String := do
+  let graph ← dependencyGraph
 
   if graph.isEmpty then
-    logInfo "Informal dependency graph:\n  (no informal declarations found)"
+    return "Informal dependency graph:\n  (no informal declarations found)"
   else
     let lines := graph.map (fun (declName, deps) => renderGraphLine declName deps)
     let leaves := leavesFromGraph graph
@@ -138,6 +138,9 @@ private def renderGraphLine (declName : Name) (deps : Array Name) : String :=
         s!"Leaves (no informal dependencies): {", ".intercalate (leaves.toList.map toString)}"
     let output :=
       #["Informal dependency graph:"] ++ lines ++ #["", leafLine]
-    logInfo ("\n".intercalate output.toList)
+    return "\n".intercalate output.toList
+
+@[command_elab informalDepsCmd] def elabInformalDepsCmd : CommandElab := fun _stx => do
+  logInfo (← liftCoreM renderDependencyGraph)
 
 end Informalize.Tooling

@@ -53,13 +53,38 @@ private def currentModuleDecls : CoreM (Array Name) := do
       acc
   return decls.qsort Name.quickLt
 
-private def collectDeclsByAxiom (axiomName : Name) : CoreM (Array Name) := do
-  let mut decls : Array Name := #[]
-  for declName in (← currentModuleDecls) do
+private def collectDeclsByAxiomInDecls (sourceDecls : Array Name) (axiomName : Name) : CoreM (Array Name) := do
+  let mut hits : Array Name := #[]
+  for declName in sourceDecls do
     let axioms ← collectAxioms declName
     if axioms.contains axiomName then
-      decls := decls.push declName
-  return decls
+      hits := hits.push declName
+  return hits
+
+private def collectDeclsByAxiom (axiomName : Name) : CoreM (Array Name) := do
+  collectDeclsByAxiomInDecls (← currentModuleDecls) axiomName
+
+def declsInModules (moduleNames : Array Name) : CoreM (Array Name) := do
+  let env ← getEnv
+  let moduleIdxs := moduleNames.filterMap env.getModuleIdx?
+  if moduleIdxs.isEmpty then
+    return #[]
+  let decls := env.constants.fold (init := #[]) fun acc declName _ =>
+    match env.getModuleIdxFor? declName with
+    | some moduleIdx =>
+      if moduleIdxs.contains moduleIdx then
+        acc.push declName
+      else
+        acc
+    | none =>
+      acc
+  return decls.qsort Name.quickLt
+
+def informalDeclsInDecls (decls : Array Name) : CoreM (Array Name) :=
+  collectDeclsByAxiomInDecls decls ``Informalize.Informal
+
+def sorryDeclsInDecls (decls : Array Name) : CoreM (Array Name) :=
+  collectDeclsByAxiomInDecls decls ``sorryAx
 
 def informalDecls : CoreM (Array Name) :=
   collectDeclsByAxiom ``Informalize.Informal
@@ -83,65 +108,87 @@ def collectReport : CoreM LinterReport := do
     orphanEntries := (← orphanEntries)
   }
 
-def runLinter : CommandElabM Unit := do
-  let report ← liftCoreM collectReport
-  let entries ← liftCoreM Informalize.allEntries
+def collectReportForDecls (decls : Array Name) : CoreM LinterReport := do
+  return {
+    informalDecls := (← informalDeclsInDecls decls)
+    sorryDecls := (← sorryDeclsInDecls decls)
+    orphanEntries := (← orphanEntries)
+  }
+
+def collectReportForModules (moduleNames : Array Name) : CoreM LinterReport := do
+  collectReportForDecls (← declsInModules moduleNames)
+
+private def lintWarningsFromReport (report : LinterReport) : CoreM (Array String) := do
+  let entries ← Informalize.allEntries
   let cfg : StaleDescriptionHeuristicConfig := {}
-  let mut foundIssues := false
+  let mut warnings : Array String := #[]
 
   for declName in report.informalDecls do
-    foundIssues := true
-    logWarning m!"declaration `{declName}` transitively references `Informalize.Informal`"
+    warnings := warnings.push s!"declaration `{declName}` transitively references `Informalize.Informal`"
   for declName in report.sorryDecls do
-    foundIssues := true
-    logWarning m!"declaration `{declName}` transitively references `sorryAx`"
+    warnings := warnings.push s!"declaration `{declName}` transitively references `sorryAx`"
   for entry in report.orphanEntries do
-    foundIssues := true
     match entry.declName with
     | some declName =>
-      logWarning m!"orphan metadata entry for `{declName}` at {sourcePointer entry}"
+      warnings := warnings.push s!"orphan metadata entry for `{declName}` at {sourcePointer entry}"
     | none =>
-      logWarning m!"orphan metadata entry at {sourcePointer entry}"
+      warnings := warnings.push s!"orphan metadata entry at {sourcePointer entry}"
 
   for entry in entries do
     if isPotentiallyStaleDescription entry cfg && entry.docRef?.isNone then
-      foundIssues := true
-      logWarning m!"description for {entryTarget entry} exceeds {cfg.threshold} characters and has no doc reference"
+      warnings := warnings.push s!"description for {entryTarget entry} exceeds {cfg.threshold} characters and has no doc reference"
 
     match entry.docRef? with
     | none =>
       pure ()
     | some docRef => do
       if !docRef.path.endsWith ".md" then
-        foundIssues := true
-        logWarning m!"doc reference for {entryTarget entry} points to non-markdown path `{docRef.path}`"
+        warnings := warnings.push s!"doc reference for {entryTarget entry} points to non-markdown path `{docRef.path}`"
 
-      let pathExists ← liftIO <| System.FilePath.pathExists docRef.path
+      let pathExists ← (System.FilePath.pathExists docRef.path : IO Bool)
       if !pathExists then
-        foundIssues := true
-        logWarning m!"doc reference for {entryTarget entry} points to missing file `{docRef.path}`"
+        warnings := warnings.push s!"doc reference for {entryTarget entry} points to missing file `{docRef.path}`"
       else
         try
-          let content ← liftIO <| IO.FS.readFile docRef.path
+          let content ← (IO.FS.readFile docRef.path : IO String)
           match docRef.id? with
           | some id =>
             let marker := markerForId id
             if !content.contains marker then
-              foundIssues := true
-              logWarning m!"doc reference for {entryTarget entry} is missing marker `{id}` in `{docRef.path}`"
+              warnings := warnings.push s!"doc reference for {entryTarget entry} is missing marker `{id}` in `{docRef.path}`"
             else
               let occurrences := markerOccurrences content marker
               if occurrences > 1 then
-                foundIssues := true
-                logWarning m!"doc reference marker `{id}` appears {occurrences} times in `{docRef.path}`"
+                warnings := warnings.push s!"doc reference marker `{id}` appears {occurrences} times in `{docRef.path}`"
           | none =>
             pure ()
         catch _ =>
-          foundIssues := true
-          logWarning m!"doc reference for {entryTarget entry} points to unreadable file `{docRef.path}`"
+          warnings := warnings.push s!"doc reference for {entryTarget entry} points to unreadable file `{docRef.path}`"
 
-  if !foundIssues then
+  return warnings
+
+def lintWarnings : CoreM (Array String) := do
+  lintWarningsFromReport (← collectReport)
+
+def lintWarningsForModules (moduleNames : Array Name) : CoreM (Array String) := do
+  lintWarningsFromReport (← collectReportForModules moduleNames)
+
+def renderLintWarnings (warnings : Array String) : String :=
+  if warnings.isEmpty then
+    "informal linter found no issues"
+  else
+    "\n".intercalate ((warnings.map fun warning => s!"warning: {warning}").toList)
+
+def renderLintReport : CoreM String := do
+  return renderLintWarnings (← lintWarnings)
+
+def runLinter : CommandElabM Unit := do
+  let warnings ← liftCoreM lintWarnings
+  if warnings.isEmpty then
     logInfo "informal linter found no issues"
+  else
+    for warning in warnings do
+      logWarning m!"{warning}"
 
 syntax (name := informalLintCmd) "#informal_lint" : command
 
