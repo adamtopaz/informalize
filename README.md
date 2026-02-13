@@ -18,7 +18,7 @@ Location is optional: plain `informal ...` skips markdown lookup.
 ## Core behavior
 
 - `informal` is term-only.
-- `informal` is only allowed inside declaration values or proofs.
+- `informal` is only allowed inside declaration types/values (including proofs).
 - location is optional and written as `informal[Foo.bar...]`.
 - each use elaborates to an unsound placeholder based on:
 
@@ -29,6 +29,10 @@ axiom Informalize.Informal.{u} (tag : Lean.Name) (alpha : Sort u) : alpha
 The elaborator generates a unique `Lean.Name` tag (similar to sorry labels), then
 builds an expression equivalent to `Informal <unique_name> ...` with any provided
 arguments.
+
+The environment extension tracks declarations that contain `informal` and stores
+the deduplicated set of markdown locations referenced in each declaration (possibly
+empty when only `informal ...` without brackets is used).
 
 ## Repository layout
 

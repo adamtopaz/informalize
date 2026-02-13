@@ -2,6 +2,8 @@ module
 
 public import Lean
 public import Informalize.Axiom
+public import Informalize.Extension
+public meta import Informalize.Extension
 public meta import Init.Data.String.Legacy
 
 public section
@@ -145,7 +147,7 @@ private meta def resolveHeadingPath
     currentHeading := childHeading
   return currentHeading
 
-private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Unit := do
+private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM String := do
   let (fileStem, headingPath, renderedId) ← parseIdComponents idStx
   let filePath := s!"informal/{fileStem}.md"
   let pathExists ← (System.FilePath.pathExists filePath : IO Bool)
@@ -161,7 +163,7 @@ private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Unit := 
     throwErrorAt idStx s!"informal id `{renderedId}` points to `{filePath}`, but the file has no markdown headings"
   match resolveHeadingPath headings headingPath with
   | .ok _ =>
-    pure ()
+    pure renderedId
   | .error err =>
     throwErrorAt idStx s!"informal id `{renderedId}` is invalid in `{filePath}`: {err}"
 
@@ -219,11 +221,12 @@ private meta def runInformalElab
     | throwError "`informal` may only be used inside declaration values or proofs"
   if isCommandPseudoDeclName declName then
     throwError "`informal` may only be used inside declaration values or proofs"
-  match location? with
-  | some location =>
-    resolveInformalId location
-  | none =>
-    pure ()
+  let locationId? ←
+    match location? with
+    | some location =>
+      pure (some (← resolveInformalId location))
+    | none =>
+      pure none
   let argExprs ← args.mapM fun arg =>
     withRef arg <| elabTerm arg none
   let expectedType ←
@@ -234,7 +237,9 @@ private meta def runInformalElab
       mkFreshTypeMVar
   let expr ← mkInformalExpr expectedType argExprs
   Term.synthesizeSyntheticMVarsNoPostponing
-  instantiateMVars expr
+  let expr ← instantiateMVars expr
+  addInformalOccurrence declName locationId?
+  return expr
 
 @[term_elab informalTermWithLoc] meta def elabInformalTermWithLoc : TermElab := fun stx expectedType? => do
   match stx with

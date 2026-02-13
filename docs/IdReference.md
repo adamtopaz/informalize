@@ -10,3 +10,6 @@
 - deeper ids continue the same subsection rule
 
 Validation happens during elaboration.
+
+Each successful elaboration is tracked in an environment extension keyed by
+declaration name, with a deduplicated location set for that declaration.
