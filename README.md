@@ -45,5 +45,19 @@ empty when only `informal ...` without brackets is used).
 
 ```bash
 lake build
+lake build informalize
 lake exe tests
+```
+
+## CLI queries
+
+Query extension data outside Lean files with:
+
+```bash
+lake exe informalize status --module Tests.Integration.Imports.Top
+lake exe informalize deps --module Tests.Integration.Deps
+lake exe informalize decls --module Tests.Integration.Imports.Top --with-locations
+lake exe informalize decl --module Tests.Integration.Imports.Top --decl Tests.Integration.Imports.Base.baseLoc
+lake exe informalize locations --module Tests.Integration.Imports.Top
+lake exe informalize location --module Tests.Integration.Imports.Top --location Foo.bar
 ```

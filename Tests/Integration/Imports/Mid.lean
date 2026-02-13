@@ -5,10 +5,10 @@ open Lean Elab Command
 namespace Tests.Integration.Imports.Mid
 
 noncomputable def midLoc : Nat :=
-  informal[Foo.bar.baz]
+  informal[Foo.bar.baz] Tests.Integration.Imports.Base.baseLoc
 
 noncomputable def midBare : Nat :=
-  informal
+  informal Tests.Integration.Imports.Base.baseBare
 
 private def entryFor?
     (entries : Array Informalize.InformalDeclEntry)
