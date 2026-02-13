@@ -61,3 +61,16 @@ lake exe informalize decl --module Tests.Integration.Imports.Top --decl Tests.In
 lake exe informalize locations --module Tests.Integration.Imports.Top
 lake exe informalize location --module Tests.Integration.Imports.Top --location Foo.bar
 ```
+
+Command overview:
+
+- `status`: summary counts for tracked declarations and markdown locations.
+- `deps`: transitive dependency graph among tracked declarations, plus leaves.
+- `decls`: list tracked declarations with location counts and location sets.
+- `decl`: show one declaration's tracked location set.
+- `locations`: reverse index from location to declarations.
+- `location`: show declarations referencing one location.
+
+`deps` follows constant usage transitively through non-informal bridge declarations,
+then projects results back onto declarations tracked by the informal extension.
+Leaves are tracked declarations with no tracked dependencies in that transitive graph.

@@ -22,3 +22,9 @@ You can inspect this data with the CLI:
 - `lake exe informalize decl --module <Module.Name> --decl <Decl.Name>`
 - `lake exe informalize locations --module <Module.Name>`
 - `lake exe informalize location --module <Module.Name> --location <Location.Name>`
+
+`deps` computes transitive dependencies using `ConstantInfo.getUsedConstantsAsSet`.
+Traversal may pass through declarations that do not contain `informal`; output only
+shows dependencies between declarations tracked by the informal extension.
+
+`Leaves` in `deps` output are tracked declarations with no tracked dependencies.
