@@ -2,125 +2,170 @@ module
 
 public import Lean
 public import Informalize.Axiom
-public import Informalize.Extension
-public meta import Informalize.Extension
+public meta import Init.Data.String.Legacy
 
 public section
 
-open Lean Elab Term Tactic Meta
+open Lean Elab Term Meta
 
 namespace Informalize
 
-syntax (name := informalTerm) "informal " interpolatedStr(term) : term
-syntax (name := informalTermFrom) "informal " interpolatedStr(term) " from " str : term
-syntax (name := formalizedTerm) "formalized " interpolatedStr(term) " as " term : term
-syntax (name := formalizedTermFrom) "formalized " interpolatedStr(term) " from " str " as " term : term
+syntax (name := informalTermWithLoc) "informal[" ident "]" (ppSpace term:max)* : term
+syntax (name := informalTermNoLoc) "informal" (ppSpace term:max)* : term
 
-syntax (name := informalTactic) "informal " interpolatedStr(term) : tactic
-syntax (name := informalTacticFrom) "informal " interpolatedStr(term) " from " str : tactic
-syntax (name := formalizedTactic) "formalized " interpolatedStr(term) " as " tacticSeq : tactic
-syntax (name := formalizedTacticFrom) "formalized " interpolatedStr(term) " from " str " as " tacticSeq : tactic
+private structure MarkdownHeading where
+  level : Nat
+  title : String
+  line : Nat
+  deriving Repr
 
-structure DescriptionData where
-  renderedDescription : String
-  interpolationExprs : Array Expr
-  referencedConstants : Array Name
+private meta def countLeadingHashes : String -> Nat
+  | s =>
+    let rec go : List Char -> Nat
+      | '#' :: rest => go rest + 1
+      | _ => 0
+    go s.toList
 
-meta def collectConstantsFromExpr (expr : Expr) (seen : NameSet) (constants : Array Name) : NameSet × Array Name :=
-  match expr with
-  | .forallE _ domain body _ =>
-    let (seen, constants) := collectConstantsFromExpr domain seen constants
-    collectConstantsFromExpr body seen constants
-  | .lam _ domain body _ =>
-    let (seen, constants) := collectConstantsFromExpr domain seen constants
-    collectConstantsFromExpr body seen constants
-  | .letE _ type value body _ =>
-    let (seen, constants) := collectConstantsFromExpr type seen constants
-    let (seen, constants) := collectConstantsFromExpr value seen constants
-    collectConstantsFromExpr body seen constants
-  | .app fn arg =>
-    let (seen, constants) := collectConstantsFromExpr fn seen constants
-    collectConstantsFromExpr arg seen constants
-  | .mdata _ body =>
-    collectConstantsFromExpr body seen constants
-  | .proj _ _ body =>
-    collectConstantsFromExpr body seen constants
-  | .const constName _ =>
-    if seen.contains constName then
-      (seen, constants)
+private meta def parseHeading? (line : String) (lineNo : Nat) : Option MarkdownHeading :=
+  let trimmed := line.trimAscii.toString
+  let level := countLeadingHashes trimmed
+  if level == 0 then
+    none
+  else
+    let title := (String.ofList (trimmed.toList.drop level)).trimAscii.toString
+    if title.isEmpty then
+      none
     else
-      (seen.insert constName, constants.push constName)
-  | _ =>
-    (seen, constants)
+      some { level, title, line := lineNo }
 
-meta def collectConstants (exprs : Array Expr) : Array Name := Id.run do
-  let mut seen : NameSet := {}
-  let mut constants : Array Name := #[]
-  for expr in exprs do
-    let (seen', constants') := collectConstantsFromExpr expr seen constants
-    seen := seen'
-    constants := constants'
-  return constants
-
-meta def elabDescriptionData (descriptionStx : Syntax) : TermElabM DescriptionData := do
-  let mut renderedDescription := ""
-  let mut interpolationExprs : Array Expr := #[]
-  for chunk in descriptionStx.getArgs do
-    match chunk.isInterpolatedStrLit? with
-    | some litChunk =>
-      renderedDescription := renderedDescription ++ litChunk
+private meta def collectHeadings (content : String) : Array MarkdownHeading := Id.run do
+  let lines := (content.splitOn "\n").toArray
+  let mut headings : Array MarkdownHeading := #[]
+  for idx in [0:lines.size] do
+    match lines[idx]? with
+    | some line =>
+      if let some heading := parseHeading? line (idx + 1) then
+        headings := headings.push heading
     | none =>
-      let interpExpr ← withRef chunk <| elabTerm chunk none
-      let interpExpr ← instantiateMVars interpExpr
-      interpolationExprs := interpolationExprs.push interpExpr
-      let ppInterpExpr ← Meta.ppExpr interpExpr
-      renderedDescription := renderedDescription ++ toString ppInterpExpr
-  let referencedConstants := collectConstants interpolationExprs
-  return {
-    renderedDescription
-    interpolationExprs
-    referencedConstants
-  }
+      pure ()
+  return headings
 
-meta def collectCapturedFVarIds (interpolationExprs : Array Expr) (expectedType : Expr) : Array FVarId := Id.run do
-  let mut fvarState : CollectFVars.State := {}
-  for expr in interpolationExprs do
-    fvarState := collectFVars fvarState expr
-  fvarState := collectFVars fvarState expectedType
-  fvarState.fvarIds
+private meta def renderId (components : Array String) : String :=
+  ".".intercalate components.toList
 
-meta def mkSourceRef : TermElabM SourceRef := do
-  let moduleName ← getMainModule
-  let fileName ← getFileName
-  let fileMap ← getFileMap
-  let ref ← getRef
-  let (line, column, endLine, endColumn) :=
-    match ref.getPos?, ref.getTailPos? with
-    | some startPos, some endPos =>
-      let startPosition := fileMap.toPosition startPos
-      let endPosition := fileMap.toPosition endPos
-      (startPosition.line, startPosition.column, endPosition.line, endPosition.column)
-    | _, _ =>
-      (0, 0, 0, 0)
-  return {
-    moduleName
-    fileName
-    line
-    column
-    endLine
-    endColumn
-  }
+private meta def nameComponents (name : Name) : Except String (Array String) := do
+  let rec go : Name -> Except String (List String)
+    | .anonymous =>
+      pure []
+    | .str parent component => do
+      let parts ← go parent
+      pure (parts ++ [component])
+    | .num _ _ =>
+      throw "numeric components are not supported in informal ids"
+  return (← go name).toArray
 
-meta def mkParams (fvarIds : Array FVarId) : TermElabM (Array (Name × String)) := do
-  let mut params : Array (Name × String) := #[]
-  for fvarId in fvarIds do
-    let localDecl ← fvarId.getDecl
-    let type ← instantiateMVars localDecl.type
-    let ppType ← Meta.ppExpr type
-    params := params.push (localDecl.userName, toString ppType)
-  return params
+private meta def parseIdComponents
+    (idStx : TSyntax `ident) : TermElabM (String × Array String × String) := do
+  let components ←
+    match nameComponents idStx.getId with
+    | .ok components =>
+      pure components
+    | .error err =>
+      throwErrorAt idStx err
+  if components.size < 2 then
+    throwErrorAt idStx s!"informal id `{renderId components}` must have at least two components (`File.Section`)"
+  let some fileStem := components[0]?
+    | throwErrorAt idStx s!"invalid informal id `{renderId components}`"
+  let headingPath := Id.run do
+    let mut path : Array String := #[]
+    for idx in [1:components.size] do
+      match components[idx]? with
+      | some component =>
+        path := path.push component
+      | none =>
+        pure ()
+    return path
+  return (fileStem, headingPath, renderId components)
 
-meta def mkUniqueTag : TermElabM Name := do
+private meta def findHeadingIdx?
+    (headings : Array MarkdownHeading)
+    (title : String) : Option Nat := Id.run do
+  let mut idx? : Option Nat := none
+  for idx in [0:headings.size] do
+    match headings[idx]? with
+    | some heading =>
+      if idx?.isNone && heading.title == title then
+        idx? := some idx
+    | none =>
+      pure ()
+  return idx?
+
+private meta def findChildHeadingIdx?
+    (headings : Array MarkdownHeading)
+    (startIdx : Nat)
+    (parentLevel : Nat)
+    (targetTitle : String) : Option Nat := Id.run do
+  let mut idx? : Option Nat := none
+  let mut stop := false
+  for idx in [startIdx:headings.size] do
+    if !stop then
+      match headings[idx]? with
+      | some heading =>
+        if heading.level <= parentLevel then
+          stop := true
+        else if heading.title == targetTitle then
+          idx? := some idx
+          stop := true
+      | none =>
+        pure ()
+  return idx?
+
+private meta def resolveHeadingPath
+    (headings : Array MarkdownHeading)
+    (titles : Array String) : Except String MarkdownHeading := do
+  if titles.isEmpty then
+    throw "expected at least one heading component"
+  let some rootTitle := titles[0]?
+    | throw "expected at least one heading component"
+  let some rootIdx := findHeadingIdx? headings rootTitle
+    | throw s!"missing section `{rootTitle}`"
+  let some rootHeading := headings[rootIdx]?
+    | throw s!"missing section `{rootTitle}`"
+  let mut currentIdx := rootIdx
+  let mut currentHeading := rootHeading
+  for idx in [1:titles.size] do
+    let some title := titles[idx]?
+      | throw "invalid heading component"
+    let some childIdx :=
+      findChildHeadingIdx? headings (currentIdx + 1) currentHeading.level title
+      | throw s!"missing subsection `{title}` under `{currentHeading.title}`"
+    let some childHeading := headings[childIdx]?
+      | throw s!"missing subsection `{title}` under `{currentHeading.title}`"
+    currentIdx := childIdx
+    currentHeading := childHeading
+  return currentHeading
+
+private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Unit := do
+  let (fileStem, headingPath, renderedId) ← parseIdComponents idStx
+  let filePath := s!"informal/{fileStem}.md"
+  let pathExists ← (System.FilePath.pathExists filePath : IO Bool)
+  if !pathExists then
+    throwErrorAt idStx s!"informal id `{renderedId}` points to missing file `{filePath}`"
+  let content ←
+    try
+      (IO.FS.readFile filePath : IO String)
+    catch _ =>
+      throwErrorAt idStx s!"unable to read `{filePath}` for informal id `{renderedId}`"
+  let headings := collectHeadings content
+  if headings.isEmpty then
+    throwErrorAt idStx s!"informal id `{renderedId}` points to `{filePath}`, but the file has no markdown headings"
+  match resolveHeadingPath headings headingPath with
+  | .ok _ =>
+    pure ()
+  | .error err =>
+    throwErrorAt idStx s!"informal id `{renderedId}` is invalid in `{filePath}`: {err}"
+
+private meta def mkUniqueTag : TermElabM Name := do
   let ref ← getRef
   if let (some startSPos, some endSPos) := (ref.getPos?, ref.getTailPos?) then
     let fileMap ← getFileMap
@@ -138,7 +183,7 @@ meta def mkUniqueTag : TermElabM Name := do
   else
     SorryLabelView.encode {}
 
-meta def nameContainsComponent (name : Name) (target : String) : Bool :=
+private meta def nameContainsComponent (name : Name) (target : String) : Bool :=
   match name with
   | .anonymous =>
     false
@@ -147,168 +192,62 @@ meta def nameContainsComponent (name : Name) (target : String) : Bool :=
   | .num parent _ =>
     nameContainsComponent parent target
 
-meta def isCommandPseudoDeclName (declName : Name) : Bool :=
+private meta def isCommandPseudoDeclName (declName : Name) : Bool :=
   declName == `_check ||
     declName == `_reduce ||
     declName == `_synth_cmd ||
     nameContainsComponent declName "_eval"
 
-meta def mkInformalExpr
-    (expectedType : Expr)
-    (interpolationExprs : Array Expr)
-    (capturedFVarIds : Array FVarId) : TermElabM Expr := do
-  let interpolationExprs ← interpolationExprs.mapM instantiateMVars
-  let interpolationTypes ← interpolationExprs.mapM fun interpolationExpr => do
-    instantiateMVars (← Meta.inferType interpolationExpr)
-  let capturedFVars := capturedFVarIds.map mkFVar
-  let alphaBody := interpolationTypes.foldr (init := expectedType) fun interpolationType body =>
-    mkForall `interp .default interpolationType body
-  let alpha ← mkForallFVars capturedFVars alphaBody
-  let tag ← mkUniqueTag
-  let taggedAlpha := mkForall `tag .default (mkConst ``Lean.Name) alpha
-  let level ← Meta.getLevel taggedAlpha
-  let informalConst := Lean.mkConst ``Informalize.Informal [level]
-  let informalWithTag := mkApp2 informalConst taggedAlpha (toExpr tag)
-  let informalWithCaptured := mkAppN informalWithTag capturedFVars
-  return mkAppN informalWithCaptured interpolationExprs
-
-meta def mkEntry
-    (status : InformalStatus)
-    (descriptionData : DescriptionData)
-    (docRef? : Option DocRef)
-    (expectedType : Expr)
-    (capturedFVarIds : Array FVarId) : TermElabM InformalEntry := do
+private meta def mkInformalExpr (expectedType : Expr) (argExprs : Array Expr) : TermElabM Expr := do
   let expectedType ← instantiateMVars expectedType
-  let ppExpectedType ← Meta.ppExpr expectedType
-  let params ← mkParams capturedFVarIds
-  let sourceInfo ← mkSourceRef
-  let declName ← getDeclName?
-  let referencedConstants := Id.run do
-    let mut seen : NameSet := {}
-    let mut constants : Array Name := #[]
-    for constName in descriptionData.referencedConstants do
-      if !seen.contains constName then
-        seen := seen.insert constName
-        constants := constants.push constName
-    let (_, constantsOut) := collectConstantsFromExpr expectedType seen constants
-    return constantsOut
-  return {
-    declName
-    description := descriptionData.renderedDescription
-    docRef?
-    params
-    expectedType := toString ppExpectedType
-    referencedConstants
-    sourceInfo
-    status
-  }
+  let argExprs ← argExprs.mapM instantiateMVars
+  let argTypes ← argExprs.mapM fun argExpr => do
+    instantiateMVars (← Meta.inferType argExpr)
+  let alpha := argTypes.foldr (init := expectedType) fun argType body =>
+    mkForall `arg .default argType body
+  let tag ← mkUniqueTag
+  let level ← Meta.getLevel alpha
+  let informalConst := Lean.mkConst ``Informalize.Informal [level]
+  let informalExpr := mkApp2 informalConst (toExpr tag) alpha
+  return mkAppN informalExpr argExprs
 
-meta def parseDocRefStx (docRefStx : Syntax) : TermElabM DocRef := do
-  let some raw := docRefStx.isStrLit?
-    | throwErrorAt docRefStx "expected string literal path[#id]"
-  match parseDocRefRaw raw with
-  | Except.ok docRef =>
-    pure docRef
-  | Except.error err =>
-    throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
-
-meta def parseDocRefStxInTactic (docRefStx : Syntax) : TacticM DocRef := do
-  let some raw := docRefStx.isStrLit?
-    | throwErrorAt docRefStx "expected string literal path[#id]"
-  match parseDocRefRaw raw with
-  | Except.ok docRef =>
-    pure docRef
-  | Except.error err =>
-    throwErrorAt docRefStx s!"invalid doc reference '{raw}': {err}"
-
-meta def runInformalElab
-    (descriptionStx : Syntax)
-    (docRef? : Option DocRef)
+private meta def runInformalElab
+    (location? : Option (TSyntax `ident))
+    (args : Array (TSyntax `term))
     (expectedType? : Option Expr) : TermElabM Expr := do
   let some declName := (← getDeclName?)
     | throwError "`informal` may only be used inside declaration values or proofs"
   if isCommandPseudoDeclName declName then
     throwError "`informal` may only be used inside declaration values or proofs"
-  let descriptionData ← elabDescriptionData descriptionStx
+  match location? with
+  | some location =>
+    resolveInformalId location
+  | none =>
+    pure ()
+  let argExprs ← args.mapM fun arg =>
+    withRef arg <| elabTerm arg none
   let expectedType ←
     match expectedType? with
     | some expectedType =>
       instantiateMVars expectedType
-    | none => do
-      let probeExpectedType ← mkFreshTypeMVar
-      let probeCapturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs probeExpectedType
-      let probeExpr ← mkInformalExpr probeExpectedType descriptionData.interpolationExprs probeCapturedFVarIds
-      Term.synthesizeSyntheticMVarsNoPostponing
-      let probeExpr ← instantiateMVars probeExpr
-      instantiateMVars (← Meta.inferType probeExpr)
-  let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
-  let expr ← mkInformalExpr expectedType descriptionData.interpolationExprs capturedFVarIds
-  let entry ← mkEntry .informal descriptionData docRef? expectedType capturedFVarIds
-  addInformalEntry entry
-  return annotateExprWithEntry entry expr
-
-meta def runFormalizedTermElab
-    (descriptionStx : Syntax)
-    (docRef? : Option DocRef)
-    (bodyStx : Syntax)
-    (expectedType? : Option Expr) : TermElabM Expr := do
-  let bodyExpr ← elabTerm bodyStx expectedType?
+    | none =>
+      mkFreshTypeMVar
+  let expr ← mkInformalExpr expectedType argExprs
   Term.synthesizeSyntheticMVarsNoPostponing
-  let bodyExpr ← instantiateMVars bodyExpr
-  let expectedType ←
-    match expectedType? with
-    | some expectedType => instantiateMVars expectedType
-    | none => instantiateMVars (← Meta.inferType bodyExpr)
-  let descriptionData ← elabDescriptionData descriptionStx
-  let capturedFVarIds := collectCapturedFVarIds descriptionData.interpolationExprs expectedType
-  if (← getDeclName?).isNone then
-    return bodyExpr
-  let entry ← mkEntry .formalized descriptionData docRef? expectedType capturedFVarIds
-  addInformalEntry entry
-  return annotateExprWithEntry entry bodyExpr
+  instantiateMVars expr
 
-@[term_elab informalTerm] meta def elabInformalTerm : TermElab := fun stx expectedType? => do
-  runInformalElab stx[1] none expectedType?
+@[term_elab informalTermWithLoc] meta def elabInformalTermWithLoc : TermElab := fun stx expectedType? => do
+  match stx with
+  | `(informal[$id:ident] $[$args:term]*) =>
+    runInformalElab (some id) args expectedType?
+  | _ =>
+    throwUnsupportedSyntax
 
-@[term_elab informalTermFrom] meta def elabInformalTermFrom : TermElab := fun stx expectedType? => do
-  let docRef ← parseDocRefStx stx[3]
-  runInformalElab stx[1] (some docRef) expectedType?
-
-@[term_elab formalizedTerm] meta def elabFormalizedTerm : TermElab := fun stx expectedType? => do
-  runFormalizedTermElab stx[1] none stx[3] expectedType?
-
-@[term_elab formalizedTermFrom] meta def elabFormalizedTermFrom : TermElab := fun stx expectedType? => do
-  let docRef ← parseDocRefStx stx[3]
-  runFormalizedTermElab stx[1] (some docRef) stx[5] expectedType?
-
-@[tactic informalTactic] meta def evalInformalTactic : Tactic := fun stx => do
-  withMainContext do
-    let goalType ← getMainTarget
-    let expr ← runInformalElab stx[1] none (some goalType)
-    closeMainGoal `informal expr
-
-@[tactic informalTacticFrom] meta def evalInformalTacticFrom : Tactic := fun stx => do
-  withMainContext do
-    let goalType ← getMainTarget
-    let docRef ← parseDocRefStxInTactic stx[3]
-    let expr ← runInformalElab stx[1] (some docRef) (some goalType)
-    closeMainGoal `informal expr
-
-@[tactic formalizedTactic] meta def evalFormalizedTactic : Tactic := fun stx => do
-  withMainContext do
-    let goalType ← getMainTarget
-    let body : TSyntax `Lean.Parser.Tactic.tacticSeq := ⟨stx[3]⟩
-    let bodyTerm ← `(by $body)
-    let expr ← runFormalizedTermElab stx[1] none bodyTerm (some goalType)
-    closeMainGoal `formalized expr
-
-@[tactic formalizedTacticFrom] meta def evalFormalizedTacticFrom : Tactic := fun stx => do
-  withMainContext do
-    let goalType ← getMainTarget
-    let docRef ← parseDocRefStxInTactic stx[3]
-    let body : TSyntax `Lean.Parser.Tactic.tacticSeq := ⟨stx[5]⟩
-    let bodyTerm ← `(by $body)
-    let expr ← runFormalizedTermElab stx[1] (some docRef) bodyTerm (some goalType)
-    closeMainGoal `formalized expr
+@[term_elab informalTermNoLoc] meta def elabInformalTermNoLoc : TermElab := fun stx expectedType? => do
+  match stx with
+  | `(informal $[$args:term]*) =>
+    runInformalElab none args expectedType?
+  | _ =>
+    throwUnsupportedSyntax
 
 end Informalize

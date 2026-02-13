@@ -1,206 +1,45 @@
 # Informalize
 
-Informalize is a Lean 4 framework for gradual formalization.
-It lets you start with natural-language placeholders that still typecheck,
-then progressively replace them with formal Lean terms and proofs.
-
-## What this gives you
-
-- `informal "..."` placeholders that keep projects compiling.
-- `formalized "..." as ...` migration wrappers that preserve prose context.
-- Optional long-form markdown references via `from "path[#id]"`.
-- Metadata tracking for status, source locations, dependencies, and descriptions.
-- Tooling commands for progress dashboards, dependency views, linting, exports,
-  and editor-style assistance.
-
-## Important safety note
-
-Informalize is intentionally unsound while placeholders remain.
-It relies on:
+Informalize is now a minimal Lean 4 rewrite centered on a single term elaborator:
 
 ```lean
-axiom Informalize.Informal.{u} (alpha : Sort u) : alpha
+informal[Foo.bar]
+informal[Foo.bar] x y
+informal[Foo.bar.baz] x y
+informal x y
 ```
 
-Use this framework for staged development, and treat
-`#print axioms <target>` as your final gate before claiming full formalization.
+When location is provided, `Foo.bar` resolves to section `bar` in `informal/Foo.md`.
+`Foo.bar.baz` resolves to subsection `baz` under section `bar` in `informal/Foo.md`.
 
-## Lifecycle model
+If the file or heading path does not exist, elaboration fails.
+Location is optional: plain `informal ...` skips markdown lookup.
 
-Typical declaration lifecycle:
+## Core behavior
+
+- `informal` is term-only.
+- `informal` is only allowed inside declaration values or proofs.
+- location is optional and written as `informal[Foo.bar...]`.
+- each use elaborates to an unsound placeholder based on:
 
 ```lean
--- Stage 1: informal
-noncomputable def GalQ : Nat :=
-  informal "The absolute Galois group of Q"
-
--- Stage 2: formalized
-def GalQ : Nat :=
-  formalized "The absolute Galois group of Q" as Nat.succ 0
-
--- Stage 3: clean
-/-- The absolute Galois group of Q -/
-def GalQ : Nat :=
-  Nat.succ 0
+axiom Informalize.Informal.{u} (tag : Lean.Name) (alpha : Sort u) : alpha
 ```
 
-## Quick start
-
-This repo uses Lean toolchain `leanprover/lean4:v4.27.0`.
-
-```bash
-lake build
-lake exe tests
-```
-
-Minimal usage sketch:
-
-```lean
-import Informalize
-
-noncomputable def seed : Nat :=
-  informal "initial sketch"
-
-theorem seed_ok : True := by
-  informal "initial proof sketch"
-
-def seed' : Nat :=
-  formalized "implemented version" as Nat.succ 0
-```
-
-## Core syntax
-
-### Term forms
-
-- `informal "description with {interpolations}"`
-- `informal "description with {interpolations}" from "docs/DocRefs.md#my-id"`
-- `formalized "description with {interpolations}" as <term>`
-- `formalized "description with {interpolations}" from "docs/DocRefs.md#my-id" as <term>`
-
-### Tactic forms
-
-- `informal "description with {interpolations}"`
-- `informal "description with {interpolations}" from "docs/DocRefs.md#my-id"`
-- `formalized "description with {interpolations}" as <tacticSeq>`
-- `formalized "description with {interpolations}" from "docs/DocRefs.md#my-id" as <tacticSeq>`
-
-`informal` is only supported inside declaration values and proofs.
-
-Interpolations can be arbitrary Lean terms. Informalize elaborates them as
-explicit placeholder arguments and records their constants for dependency
-tracking.
-
-For long-form notes, point to markdown files with stable markers:
-
-```md
-<!-- informalize:id=my-id -->
-Long-form explanation here.
-```
-
-References use repo-relative paths and optional marker ids:
-
-- `from "docs/DocRefs.md"` (whole file)
-- `from "docs/DocRefs.md#my-id"` (specific marker)
-
-## Command reference (quick)
-
-### Progress and dependency tooling
-
-- `#informal_status`
-  - grouped informal/formalized entries
-  - progress ratio
-- `#informal_deps`
-  - dependency graph among tracked declarations
-  - leaf declarations for prioritization
-- `#informal_lint`
-  - declarations using `Informalize.Informal`
-  - declarations using `sorryAx`
-  - orphan metadata entries
-
-### Blueprint export
-
-- `#export_blueprint` (Markdown)
-- `#export_blueprint "json"` (JSON)
-
-CLI equivalents:
-
-- `lake exe informalize status --module <Module.Name>`
-- `lake exe informalize deps --module <Module.Name>`
-- `lake exe informalize lint --module <Module.Name>`
-- `lake exe informalize blueprint --module <Module.Name> [--format markdown|json]`
-- `lake exe informalize code-actions --module <Module.Name> [--decl <Decl.Name>]`
-- `lake exe informalize hover --module <Module.Name> --decl <Decl.Name>`
-- `lake exe informalize panel --module <Module.Name> --file <FileHint>`
-
-JSON includes:
-
-- `schemaVersion`
-- `summary`
-- `entries`
-- `dependencyGraph`
-- `dependencyEdges`
-
-### Editor-style helper commands
-
-- `#informal_code_actions`
-- `#informal_code_actions myDecl`
-- `#informal_hover myDecl`
-- `#informal_panel`
-- `#informal_panel "MyFile.lean"`
-
-These provide command-driven equivalents of code actions, hover details, and
-per-file infoview status.
-
-## Soundness gate and completion checks
-
-Recommended final checks:
-
-```lean
-#print axioms MyFinalTheorem
-```
-
-Target should not depend on `Informalize.Informal`.
-
-Also run:
-
-```bash
-lake build
-lake exe tests
-```
-
-The test suite includes staged lifecycle coverage and `#print axioms`
-regressions through Phase 7.
+The elaborator generates a unique `Lean.Name` tag (similar to sorry labels), then
+builds an expression equivalent to `Informal <unique_name> ...` with any provided
+arguments.
 
 ## Repository layout
 
-Core library:
-
 - `Informalize/Axiom.lean`
 - `Informalize/Elaborator.lean`
-- `Informalize/Extension.lean`
-- `Informalize/CodeAction.lean`
-- `Informalize/Tooling/Status.lean`
-- `Informalize/Tooling/Deps.lean`
-- `Informalize/Tooling/Blueprint.lean`
-- `Informalize/Tooling/Linter.lean`
-- `Informalize.lean`
+- `informal/` markdown snippets referenced by ids
+- `Tests/Unit/*` rewrite test modules
 
-Tests and examples:
+## Build and tests
 
-- `Tests/Unit/Phase1.lean` ... `Tests/Unit/Phase8.lean`
-- `Tests/Integration/Phase1.lean` ... `Tests/Integration/Phase8.lean`
-- `Tests/Examples/Workflow.lean`
-- `Tests.lean`
-
-## Additional documentation
-
-- `docs/UserGuide.md`
-- `docs/CommandReference.md`
-- `docs/FAQ.md`
-- `docs/WorkflowExample.md`
-
-## Current status
-
-The planned phases are implemented, including extra hardening phases beyond the
-original 1-5 roadmap (completion gate tests, full workflow examples, and doc
-reference coverage).
+```bash
+lake build
+lake exe tests
+```

@@ -11,8 +11,3 @@ name = "Tests"
 [[lean_exe]]
 name = "tests"
 root = "Tests"
-
-[[lean_exe]]
-name = "informalize"
-root = "InformalizeCli"
-supportInterpreter = true
