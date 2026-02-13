@@ -55,6 +55,10 @@ private meta def collectHeadings (content : String) : Array MarkdownHeading := I
 private meta def renderId (components : Array String) : String :=
   ".".intercalate components.toList
 
+private meta def mkNameFromComponents (components : Array String) : Name :=
+  components.foldl (init := .anonymous) fun acc component =>
+    .str acc component
+
 private meta def nameComponents (name : Name) : Except String (Array String) := do
   let rec go : Name -> Except String (List String)
     | .anonymous =>
@@ -67,7 +71,7 @@ private meta def nameComponents (name : Name) : Except String (Array String) := 
   return (← go name).toArray
 
 private meta def parseIdComponents
-    (idStx : TSyntax `ident) : TermElabM (String × Array String × String) := do
+    (idStx : TSyntax `ident) : TermElabM (String × Array String × String × Name) := do
   let components ←
     match nameComponents idStx.getId with
     | .ok components =>
@@ -87,7 +91,7 @@ private meta def parseIdComponents
       | none =>
         pure ()
     return path
-  return (fileStem, headingPath, renderId components)
+  return (fileStem, headingPath, renderId components, mkNameFromComponents components)
 
 private meta def findHeadingIdx?
     (headings : Array MarkdownHeading)
@@ -147,8 +151,8 @@ private meta def resolveHeadingPath
     currentHeading := childHeading
   return currentHeading
 
-private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM String := do
-  let (fileStem, headingPath, renderedId) ← parseIdComponents idStx
+private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Name := do
+  let (fileStem, headingPath, renderedId, locationName) ← parseIdComponents idStx
   let filePath := s!"informal/{fileStem}.md"
   let pathExists ← (System.FilePath.pathExists filePath : IO Bool)
   if !pathExists then
@@ -163,7 +167,7 @@ private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM String :
     throwErrorAt idStx s!"informal id `{renderedId}` points to `{filePath}`, but the file has no markdown headings"
   match resolveHeadingPath headings headingPath with
   | .ok _ =>
-    pure renderedId
+    pure locationName
   | .error err =>
     throwErrorAt idStx s!"informal id `{renderedId}` is invalid in `{filePath}`: {err}"
 

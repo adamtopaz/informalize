@@ -10,79 +10,51 @@ open Lean
 
 structure InformalOccurrence where
   declName : Name
-  location? : Option String := none
+  location? : Option Name := none
   deriving Inhabited, Repr, BEq
+
+abbrev InformalState := Std.HashMap Name NameSet
 
 structure InformalDeclEntry where
   declName : Name
-  locations : Array String := #[]
-  deriving Inhabited, Repr, BEq
-
-abbrev InformalOccurrences := Array InformalOccurrence
-
-structure InformalState where
-  occurrences : InformalOccurrences := #[]
-  localOccurrences : InformalOccurrences := #[]
-  declOrder : Array Name := #[]
-  byDecl : NameMap (Array String) := {}
+  locations : NameSet := {}
   deriving Inhabited
 
-private def pushLocationDedup (locations : Array String) (location : String) : Array String :=
-  if locations.contains location then
+private def mergeLocation
+    (locations : NameSet)
+    (location? : Option Name) : NameSet :=
+  match location? with
+  | some location =>
+    locations.insert location
+  | none =>
     locations
-  else
-    locations.push location
 
-private def InformalState.addOccurrence
+private def addOccurrenceToState
     (state : InformalState)
-    (occurrence : InformalOccurrence)
-    (isLocal : Bool := true) : InformalState :=
-  let existing? := state.byDecl.find? occurrence.declName
-  let existing := existing?.getD #[]
-  let updated :=
-    match occurrence.location? with
-    | some location =>
-      pushLocationDedup existing location
-    | none =>
-      existing
-  let declOrder :=
-    match existing? with
-    | some _ =>
-      state.declOrder
-    | none =>
-      state.declOrder.push occurrence.declName
-  let localOccurrences :=
-    if isLocal then
-      state.localOccurrences.push occurrence
-    else
-      state.localOccurrences
-  {
-    occurrences := state.occurrences.push occurrence
-    localOccurrences
-    declOrder
-    byDecl := state.byDecl.insert occurrence.declName updated
-  }
+    (occurrence : InformalOccurrence) : InformalState :=
+  let locations := mergeLocation (state.getD occurrence.declName {}) occurrence.location?
+  state.insert occurrence.declName locations
 
-initialize informalExt : PersistentEnvExtension InformalOccurrence InformalOccurrence InformalState ←
-  registerPersistentEnvExtension {
+private def mkStateFromImported
+    (imported : Array (Array InformalOccurrence)) : InformalState := Id.run do
+  let mut state : InformalState := {}
+  for importedOccurrences in imported do
+    for occurrence in importedOccurrences do
+      state := addOccurrenceToState state occurrence
+  return state
+
+initialize informalExt : SimplePersistentEnvExtension InformalOccurrence InformalState ←
+  registerSimplePersistentEnvExtension {
     name := `Informalize.informalExt
-    mkInitial := pure {}
-    addImportedFn := fun imported => do
-      let mut state : InformalState := {}
-      for importedOccurrences in imported do
-        for occurrence in importedOccurrences do
-          state := state.addOccurrence occurrence (isLocal := false)
-      return state
-    addEntryFn := fun state occurrence =>
-      state.addOccurrence occurrence
-    exportEntriesFn := fun state =>
-      state.localOccurrences
+    addEntryFn := addOccurrenceToState
+    addImportedFn := mkStateFromImported
+    toArrayFn := fun entries => entries.toArray
     asyncMode := .sync
   }
 
 def addInformalOccurrence
     (declName : Name)
-    (location? : Option String := none) : CoreM Unit :=
+    (location? : Option Name := none) : CoreM Unit :=
   modifyEnv fun env =>
     informalExt.addEntry env {
       declName
@@ -91,19 +63,16 @@ def addInformalOccurrence
 
 private def getInformalState : CoreM InformalState := do
   let env ← getEnv
-  pure (informalExt.getState env)
+  return informalExt.getState env
 
 private def declEntryLt (a b : InformalDeclEntry) : Bool :=
   Name.quickLt a.declName b.declName
 
 def allInformalDeclEntries : CoreM (Array InformalDeclEntry) := do
   let state ← getInformalState
-  let entries := state.declOrder.foldl (init := #[]) fun acc declName =>
-    let locations :=
-      match state.byDecl.find? declName with
-      | some locations => locations
-      | none => #[]
-    acc.push {
+  let mut entries : Array InformalDeclEntry := #[]
+  for (declName, locations) in state do
+    entries := entries.push {
       declName
       locations
     }
@@ -111,7 +80,7 @@ def allInformalDeclEntries : CoreM (Array InformalDeclEntry) := do
 
 def informalDeclEntry? (declName : Name) : CoreM (Option InformalDeclEntry) := do
   let state ← getInformalState
-  match state.byDecl.find? declName with
+  match state.get? declName with
   | some locations =>
     return some {
       declName

@@ -1,5 +1,6 @@
 import Tests.Unit.Basic
 import Tests.Unit.Extension
+import Tests.Integration.Imports.Top
 import Tests.Unit.IdResolution
 import Tests.Unit.Negative
 
