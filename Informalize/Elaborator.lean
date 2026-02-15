@@ -58,17 +58,38 @@ private meta def parseIdComponents
   let filePath := s!"informal/{"/".intercalate pathComponents.toList}"
   return (filePath, renderId components, mkNameFromComponents components)
 
-private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Name := do
+private structure ResolvedInformalId where
+  locationName : Name
+  markdown : String
+
+private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM ResolvedInformalId := do
   let (filePath, renderedId, locationName) ← parseIdComponents idStx
   let pathExists ← (System.FilePath.pathExists filePath : IO Bool)
   if !pathExists then
     throwErrorAt idStx s!"informal id `{renderedId}` points to missing file `{filePath}`"
-  try
-    let _ ← (IO.FS.readFile filePath : IO String)
-    pure ()
-  catch _ =>
-    throwErrorAt idStx s!"unable to read `{filePath}` for informal id `{renderedId}`"
-  pure locationName
+  let markdown ←
+    try
+      (IO.FS.readFile filePath : IO String)
+    catch _ =>
+      throwErrorAt idStx s!"unable to read `{filePath}` for informal id `{renderedId}`"
+  return {
+    locationName
+    markdown
+  }
+
+private meta def addLocationHoverInfo
+    (idStx : TSyntax `ident)
+    (locationName : Name)
+    (markdown : String) : TermElabM Unit := do
+  let info : DelabTermInfo := {
+    elaborator := `Informalize.resolveInformalId
+    stx := idStx
+    lctx := (← getLCtx)
+    expectedType? := some (mkConst ``Name)
+    expr := toExpr locationName
+    docString? := some markdown
+  }
+  Elab.pushInfoLeaf <| .ofDelabTermInfo info
 
 private meta def mkUniqueTag : TermElabM Name := do
   let ref ← getRef
@@ -127,7 +148,9 @@ private meta def runInformalElab
   let locationId? ←
     match location? with
     | some location =>
-      pure (some (← resolveInformalId location))
+      let resolved ← resolveInformalId location
+      addLocationHoverInfo location resolved.locationName resolved.markdown
+      pure (some resolved.locationName)
     | none =>
       pure none
   let argExprs ← args.mapM fun arg =>
