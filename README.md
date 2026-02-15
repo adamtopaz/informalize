@@ -9,10 +9,10 @@ informal[Foo.bar.baz] x y
 informal x y
 ```
 
-When location is provided, `Foo.bar` resolves to section `bar` in `informal/Foo.md`.
-`Foo.bar.baz` resolves to subsection `baz` under section `bar` in `informal/Foo.md`.
+When location is provided, dotted ids resolve directly to markdown file paths:
+`Foo.bar` -> `informal/Foo/bar.md`, `Foo.bar.baz` -> `informal/Foo/bar/baz.md`.
 
-If the file or heading path does not exist, elaboration fails.
+If the resolved file does not exist (or cannot be read), elaboration fails.
 Location is optional: plain `informal ...` skips markdown lookup.
 
 ## Core behavior

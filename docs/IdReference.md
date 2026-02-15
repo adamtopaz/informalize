@@ -5,9 +5,9 @@
 - `informal a b c` is valid and does not check markdown locations.
 - `informal[Foo.bar] a b c` checks markdown location at elaboration time.
 
-- `Foo.bar` -> `informal/Foo.md`, heading `bar`
-- `Foo.bar.baz` -> `informal/Foo.md`, heading path `bar` -> `baz`
-- deeper ids continue the same subsection rule
+- `Foo.bar` -> `informal/Foo/bar.md`
+- `Foo.bar.baz` -> `informal/Foo/bar/baz.md`
+- deeper ids continue as nested directories, with the final component as `<name>.md`
 
 Validation happens during elaboration.
 

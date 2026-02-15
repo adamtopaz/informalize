@@ -1,28 +1,28 @@
 import Informalize
 
 /--
-error: informal id `Foo` must have at least two components (`File.Section`)
+error: informal id `Foo` must have at least two components (`Directory.File`)
 -/
 #guard_msgs(error, drop warning) in
 example : Nat :=
   informal[Foo]
 
 /--
-error: informal id `Missing.bar` points to missing file `informal/Missing.md`
+error: informal id `Missing.bar` points to missing file `informal/Missing/bar.md`
 -/
 #guard_msgs(error, drop warning) in
 example : Nat :=
   informal[Missing.bar]
 
 /--
-error: informal id `Foo.missing` is invalid in `informal/Foo.md`: missing section `missing`
+error: informal id `Foo.missing` points to missing file `informal/Foo/missing.md`
 -/
 #guard_msgs(error, drop warning) in
 example : Nat :=
   informal[Foo.missing]
 
 /--
-error: informal id `Foo.bar.nope` is invalid in `informal/Foo.md`: missing subsection `nope` under `bar`
+error: informal id `Foo.bar.nope` points to missing file `informal/Foo/bar/nope.md`
 -/
 #guard_msgs(error, drop warning) in
 example : Nat :=

@@ -15,43 +15,6 @@ namespace Informalize
 syntax (name := informalTermWithLoc) "informal[" ident "]" (ppSpace term:max)* : term
 syntax (name := informalTermNoLoc) "informal" (ppSpace term:max)* : term
 
-private structure MarkdownHeading where
-  level : Nat
-  title : String
-  line : Nat
-  deriving Repr
-
-private meta def countLeadingHashes : String -> Nat
-  | s =>
-    let rec go : List Char -> Nat
-      | '#' :: rest => go rest + 1
-      | _ => 0
-    go s.toList
-
-private meta def parseHeading? (line : String) (lineNo : Nat) : Option MarkdownHeading :=
-  let trimmed := line.trimAscii.toString
-  let level := countLeadingHashes trimmed
-  if level == 0 then
-    none
-  else
-    let title := (String.ofList (trimmed.toList.drop level)).trimAscii.toString
-    if title.isEmpty then
-      none
-    else
-      some { level, title, line := lineNo }
-
-private meta def collectHeadings (content : String) : Array MarkdownHeading := Id.run do
-  let lines := (content.splitOn "\n").toArray
-  let mut headings : Array MarkdownHeading := #[]
-  for idx in [0:lines.size] do
-    match lines[idx]? with
-    | some line =>
-      if let some heading := parseHeading? line (idx + 1) then
-        headings := headings.push heading
-    | none =>
-      pure ()
-  return headings
-
 private meta def renderId (components : Array String) : String :=
   ".".intercalate components.toList
 
@@ -71,7 +34,7 @@ private meta def nameComponents (name : Name) : Except String (Array String) := 
   return (← go name).toArray
 
 private meta def parseIdComponents
-    (idStx : TSyntax `ident) : TermElabM (String × Array String × String × Name) := do
+    (idStx : TSyntax `ident) : TermElabM (String × String × Name) := do
   let components ←
     match nameComponents idStx.getId with
     | .ok components =>
@@ -79,97 +42,33 @@ private meta def parseIdComponents
     | .error err =>
       throwErrorAt idStx err
   if components.size < 2 then
-    throwErrorAt idStx s!"informal id `{renderId components}` must have at least two components (`File.Section`)"
-  let some fileStem := components[0]?
-    | throwErrorAt idStx s!"invalid informal id `{renderId components}`"
-  let headingPath := Id.run do
+    throwErrorAt idStx s!"informal id `{renderId components}` must have at least two components (`Directory.File`)"
+  let pathComponents := Id.run do
     let mut path : Array String := #[]
-    for idx in [1:components.size] do
+    for idx in [0:components.size] do
       match components[idx]? with
       | some component =>
-        path := path.push component
+        if idx + 1 == components.size then
+          path := path.push s!"{component}.md"
+        else
+          path := path.push component
       | none =>
         pure ()
     return path
-  return (fileStem, headingPath, renderId components, mkNameFromComponents components)
-
-private meta def findHeadingIdx?
-    (headings : Array MarkdownHeading)
-    (title : String) : Option Nat := Id.run do
-  let mut idx? : Option Nat := none
-  for idx in [0:headings.size] do
-    match headings[idx]? with
-    | some heading =>
-      if idx?.isNone && heading.title == title then
-        idx? := some idx
-    | none =>
-      pure ()
-  return idx?
-
-private meta def findChildHeadingIdx?
-    (headings : Array MarkdownHeading)
-    (startIdx : Nat)
-    (parentLevel : Nat)
-    (targetTitle : String) : Option Nat := Id.run do
-  let mut idx? : Option Nat := none
-  let mut stop := false
-  for idx in [startIdx:headings.size] do
-    if !stop then
-      match headings[idx]? with
-      | some heading =>
-        if heading.level <= parentLevel then
-          stop := true
-        else if heading.title == targetTitle then
-          idx? := some idx
-          stop := true
-      | none =>
-        pure ()
-  return idx?
-
-private meta def resolveHeadingPath
-    (headings : Array MarkdownHeading)
-    (titles : Array String) : Except String MarkdownHeading := do
-  if titles.isEmpty then
-    throw "expected at least one heading component"
-  let some rootTitle := titles[0]?
-    | throw "expected at least one heading component"
-  let some rootIdx := findHeadingIdx? headings rootTitle
-    | throw s!"missing section `{rootTitle}`"
-  let some rootHeading := headings[rootIdx]?
-    | throw s!"missing section `{rootTitle}`"
-  let mut currentIdx := rootIdx
-  let mut currentHeading := rootHeading
-  for idx in [1:titles.size] do
-    let some title := titles[idx]?
-      | throw "invalid heading component"
-    let some childIdx :=
-      findChildHeadingIdx? headings (currentIdx + 1) currentHeading.level title
-      | throw s!"missing subsection `{title}` under `{currentHeading.title}`"
-    let some childHeading := headings[childIdx]?
-      | throw s!"missing subsection `{title}` under `{currentHeading.title}`"
-    currentIdx := childIdx
-    currentHeading := childHeading
-  return currentHeading
+  let filePath := s!"informal/{"/".intercalate pathComponents.toList}"
+  return (filePath, renderId components, mkNameFromComponents components)
 
 private meta def resolveInformalId (idStx : TSyntax `ident) : TermElabM Name := do
-  let (fileStem, headingPath, renderedId, locationName) ← parseIdComponents idStx
-  let filePath := s!"informal/{fileStem}.md"
+  let (filePath, renderedId, locationName) ← parseIdComponents idStx
   let pathExists ← (System.FilePath.pathExists filePath : IO Bool)
   if !pathExists then
     throwErrorAt idStx s!"informal id `{renderedId}` points to missing file `{filePath}`"
-  let content ←
-    try
-      (IO.FS.readFile filePath : IO String)
-    catch _ =>
-      throwErrorAt idStx s!"unable to read `{filePath}` for informal id `{renderedId}`"
-  let headings := collectHeadings content
-  if headings.isEmpty then
-    throwErrorAt idStx s!"informal id `{renderedId}` points to `{filePath}`, but the file has no markdown headings"
-  match resolveHeadingPath headings headingPath with
-  | .ok _ =>
-    pure locationName
-  | .error err =>
-    throwErrorAt idStx s!"informal id `{renderedId}` is invalid in `{filePath}`: {err}"
+  try
+    let _ ← (IO.FS.readFile filePath : IO String)
+    pure ()
+  catch _ =>
+    throwErrorAt idStx s!"unable to read `{filePath}` for informal id `{renderedId}`"
+  pure locationName
 
 private meta def mkUniqueTag : TermElabM Name := do
   let ref ← getRef
